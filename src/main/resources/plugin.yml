@@ -1,0 +1,22 @@
+name: casino
+version: '1.0-SNAPSHOT'
+main: dev.lemon.projectmc.vanila.casino
+api-version: '1.21'
+prefix: lemon
+authors: [ devLemon ]
+description: 마크 현질 야생
+softdepend: [Vault]
+commands:
+  slots:
+    description: 슬롯머신 GUI 열기 및 관리 명령
+    usage: /slots
+    aliases: [slot, slotmachine]
+permissions:
+  casino.slots.use:
+    description: "슬롯머신 사용"
+    default: true
+  casino.slots.admin:
+    description: "슬롯머신 관리"
+    default: op
+    children:
+      casino.slots.use: true
