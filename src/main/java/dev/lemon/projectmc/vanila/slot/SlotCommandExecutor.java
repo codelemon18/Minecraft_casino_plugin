@@ -1,5 +1,5 @@
 package dev.lemon.projectmc.vanila.slot;
-
+// TODO: 금액 추가, 감소 버튼 3개 정도로 추가
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;

@@ -34,9 +34,14 @@ public class SlotGuiListener implements Listener {
         int slot = e.getRawSlot();
         SlotSpinSession session = manager.getSession(player.getUniqueId());
         if (session == null) return;
+        int step = manager.getBetStep();
         switch (slot) {
-            case SlotMachineManager.BET_MINUS_SLOT -> manager.adjustBet(player, false);
-            case SlotMachineManager.BET_PLUS_SLOT -> manager.adjustBet(player, true);
+            case SlotMachineManager.BET_DEC_SLOT_SMALL -> manager.adjustBet(player, -step);
+            case SlotMachineManager.BET_DEC_SLOT_MID -> manager.adjustBet(player, -step * 10);
+            case SlotMachineManager.BET_DEC_SLOT_BIG -> manager.adjustBet(player, -step * 100);
+            case SlotMachineManager.BET_INC_SLOT_SMALL -> manager.adjustBet(player, step);
+            case SlotMachineManager.BET_INC_SLOT_MID -> manager.adjustBet(player, step * 10);
+            case SlotMachineManager.BET_INC_SLOT_BIG -> manager.adjustBet(player, step * 100);
             case SlotMachineManager.SPIN_SLOT -> manager.startSpin(player);
             case SlotMachineManager.EXIT_SLOT -> player.closeInventory();
             default -> {}

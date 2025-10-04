@@ -36,8 +36,16 @@ public class SlotMachineManager {
     public static final int LEFT_TOP = 11, LEFT_CENTER = 20, LEFT_BOTTOM = 29;
     public static final int MID_TOP = 13, MID_CENTER = 22, MID_BOTTOM = 31;
     public static final int RIGHT_TOP = 15, RIGHT_CENTER = 24, RIGHT_BOTTOM = 33;
-    // 베팅 표시 슬롯을 4번 슬롯으로 이동
-    public static final int BET_MINUS_SLOT = 36, BET_DISPLAY_SLOT = 4, BET_PLUS_SLOT = 40, SPIN_SLOT = 42, EXIT_SLOT = 44;
+    // 하단 버튼 슬롯 구성 (3감소, 스핀, 표시 종이(4번 유지), 3증가, 취소)
+    public static final int BET_DEC_SLOT_BIG = 36;   // - step*100
+    public static final int BET_DEC_SLOT_MID = 37;   // - step*10
+    public static final int BET_DEC_SLOT_SMALL = 38; // - step
+    public static final int SPIN_SLOT = 39;          // 스핀 버튼을 39로 이동
+    public static final int BET_DISPLAY_SLOT = 4;    // 종이는 4번 슬롯 유지
+    public static final int BET_INC_SLOT_SMALL = 41; // + step
+    public static final int BET_INC_SLOT_MID = 42;   // + step*10
+    public static final int BET_INC_SLOT_BIG = 43;   // + step*100
+    public static final int EXIT_SLOT = 44;          // 취소/닫기
 
     private final SlotCommandExecutor commandExecutor;
     private final SlotGuiListener guiListener;
@@ -114,7 +122,7 @@ public class SlotMachineManager {
     public Inventory openGui(Player player) {
         SlotSpinSession existing = sessions.get(player.getUniqueId());
         int bet = existing != null ? existing.getBet() : Math.min(Math.max(minBet, betStep), maxBet);
-        Inventory inv = Bukkit.createInventory(player, INV_SIZE, ChatColor.GOLD + "슬롯머신 " + ChatColor.GRAY + "- ₩" + bet);
+        Inventory inv = Bukkit.createInventory(player, INV_SIZE, ChatColor.GOLD + "슬롯머신 " + ChatColor.GRAY + "- ₩" + fmt(bet));
         // 기본 회색 필러 세팅
         ItemStack filler = createItem(Material.GRAY_STAINED_GLASS_PANE, ChatColor.DARK_GRAY + "", null, true);
         for (int i = 0; i < INV_SIZE; i++) inv.setItem(i, filler);
@@ -128,10 +136,18 @@ public class SlotMachineManager {
         placeReelInitial(inv, LEFT_TOP, LEFT_CENTER, LEFT_BOTTOM);
         placeReelInitial(inv, MID_TOP, MID_CENTER, MID_BOTTOM);
         placeReelInitial(inv, RIGHT_TOP, RIGHT_CENTER, RIGHT_BOTTOM);
-        inv.setItem(BET_MINUS_SLOT, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + betStep, List.of(ChatColor.GRAY + "최소: " + minBet), false));
-        inv.setItem(BET_PLUS_SLOT, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + betStep, List.of(ChatColor.GRAY + "최대: " + maxBet), false));
-        inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + bet), false));
+        // 증감 버튼(3개씩)과 스핀/표시/취소 배치
+        int s = betStep;
+        int s10 = s * 10;
+        int s100 = s * 100;
+        inv.setItem(BET_DEC_SLOT_BIG, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s100), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
+        inv.setItem(BET_DEC_SLOT_MID, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s10), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
+        inv.setItem(BET_DEC_SLOT_SMALL, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
         inv.setItem(SPIN_SLOT, createItem(Material.EMERALD_BLOCK, ChatColor.GOLD + "스핀 시작", List.of(ChatColor.GRAY + "클릭하여 회전"), false));
+        inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + fmt(bet)), false));
+        inv.setItem(BET_INC_SLOT_SMALL, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
+        inv.setItem(BET_INC_SLOT_MID, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s10), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
+        inv.setItem(BET_INC_SLOT_BIG, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s100), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
         inv.setItem(EXIT_SLOT, createItem(Material.REDSTONE, ChatColor.RED + "취소", null, false));
         player.openInventory(inv);
         if (existing == null) {
@@ -169,16 +185,19 @@ public class SlotMachineManager {
         return item;
     }
 
-    public void adjustBet(Player player, boolean increase) {
+    // delta(증가/감소량) 기반 베팅 조정
+    public void adjustBet(Player player, int delta) {
         SlotSpinSession session = sessions.get(player.getUniqueId());
         if (session == null || session.getState() != SlotSpinSession.State.IDLE) return;
         int bet = session.getBet();
-        bet += increase ? betStep : -betStep;
-        if (bet < minBet) bet = minBet; if (bet > maxBet) bet = maxBet;
-        session.setBet(bet);
+        long next = (long) bet + delta; // overflow 방지
+        if (next < minBet) next = minBet;
+        if (next > maxBet) next = maxBet;
+        session.setBet((int) next);
         Inventory inv = session.getInventory();
         if (inv != null) {
-            inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + bet), false));
+            inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + fmt(session.getBet())), false));
+            // UI를 깔끔히 갱신하기 위해 재오픈
             player.closeInventory();
             Bukkit.getScheduler().runTask(plugin, () -> openGui(player));
         }
@@ -199,11 +218,11 @@ public class SlotMachineManager {
         }
         int bet = session.getBet();
         if (economy.getBalance(player) < bet) {
-            player.sendMessage(ChatColor.RED + "[슬롯머신] 잔액이 부족합니다. 현재 잔액: ₩" + (long) economy.getBalance(player));
+            player.sendMessage(ChatColor.RED + "[슬롯머신] 잔액이 부족합니다. 현재 잔액: ₩" + fmt((long) economy.getBalance(player)));
             return;
         }
         economy.withdrawPlayer(player, bet);
-        player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "스핀을 시작합니다... ₩" + bet + "가 베팅되었습니다.");
+        player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "스핀을 시작합니다... ₩" + fmt(bet) + "가 베팅되었습니다.");
         cooldowns.put(player.getUniqueId(), now);
         session.beginSpin(frameInterval, leftFrames, middleDelay, rightDelay);
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
@@ -225,14 +244,14 @@ public class SlotMachineManager {
         if (payout > 0) economy.depositPlayer(player, payout);
         if (triple) {
             if (payoutMultiplier >= 100 && jackpotAnnounce && payout >= jackpotMinBroadcastPayout) {
-                Bukkit.broadcastMessage(ChatColor.DARK_PURPLE + "[카지노] " + ChatColor.AQUA + player.getName() + ChatColor.WHITE + "님이 슬롯머신에서 " + ChatColor.AQUA + "다이아몬드 3개" + ChatColor.WHITE + "로 ₩" + payout + "를 획득했습니다!" );
+                Bukkit.broadcastMessage(ChatColor.DARK_PURPLE + "[카지노] " + ChatColor.AQUA + player.getName() + ChatColor.WHITE + "님이 슬롯머신에서 " + ChatColor.AQUA + "다이아몬드 3개" + ChatColor.WHITE + "로 ₩" + fmt(payout) + "를 획득했습니다!");
             }
             if (left == SlotSymbol.DIAMOND) player.playSound(player.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_BLAST, 1f, 1f); else player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.2f);
-            player.sendMessage(ChatColor.GOLD + "[슬롯머신] " + ChatColor.WHITE + "축하합니다! " + left.getDisplayName() + ChatColor.WHITE + " 3개 일치 — 상금 ₩" + payout + " 지급!");
+            player.sendMessage(ChatColor.GOLD + "[슬롯머신] " + ChatColor.WHITE + "축하합니다! " + left.getDisplayName() + ChatColor.WHITE + " 3개 일치 — 상금 ₩" + fmt(payout) + " 지급!");
             if (jackpotAdminLog && left == SlotSymbol.DIAMOND) plugin.getLogger().info("JACKPOT | player:" + player.getName() + " uuid:" + player.getUniqueId() + " bet:" + bet + " payout:" + payout + " result:DIAMONDx3");
         } else if (twoMatch) {
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.6f, 1.4f);
-            player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "2개 일치! 환급 ₩" + payout + " 지급.");
+            player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "2개 일치! 환급 ₩" + fmt(payout) + " 지급.");
         } else {
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.7f, 0.8f);
             player.sendMessage(ChatColor.RED + "[슬롯머신] " + ChatColor.WHITE + "꽝! 다음에 다시 도전해보세요.");
@@ -249,6 +268,7 @@ public class SlotMachineManager {
 
     public int getMinBet() { return minBet; }
     public int getMaxBet() { return maxBet; }
+    public int getBetStep() { return betStep; }
 
     public boolean toggleJackpotAnnounce(boolean value) {
         jackpotAnnounce = value;
@@ -261,4 +281,9 @@ public class SlotMachineManager {
         sessions.values().forEach(SlotSpinSession::cancelTaskSafe);
         sessions.clear();
     }
+
+    private String fmt(long amount) {
+        return String.format("%,d", amount);
+    }
+    private String fmt(int amount) { return String.format("%,d", amount); }
 }
