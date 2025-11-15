@@ -122,33 +122,27 @@ public class SlotMachineManager {
     public Inventory openGui(Player player) {
         SlotSpinSession existing = sessions.get(player.getUniqueId());
         int bet = existing != null ? existing.getBet() : Math.min(Math.max(minBet, betStep), maxBet);
-        Inventory inv = Bukkit.createInventory(player, INV_SIZE, ChatColor.GOLD + "슬롯머신 " + ChatColor.GRAY + "- ₩" + fmt(bet));
-        // 기본 회색 필러 세팅
-        ItemStack filler = createItem(Material.GRAY_STAINED_GLASS_PANE, ChatColor.DARK_GRAY + "", null, true);
+        Inventory inv = Bukkit.createInventory(player, INV_SIZE, plugin.tr("slots.gui_title"));
+        ItemStack filler = createItem(Material.GRAY_STAINED_GLASS_PANE, " ", null, true);
         for (int i = 0; i < INV_SIZE; i++) inv.setItem(i, filler);
-        // 중앙 포커스 라인(행 2: slots 18~26) 강조 색상 (연두색 유리판) - 실제 창 20,22,24 제외
-        ItemStack focus = createItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE, ChatColor.BLUE + "중앙", null, true);
+        ItemStack focus = createItem(Material.LIGHT_BLUE_STAINED_GLASS_PANE, plugin.tr("slots.focus"), null, true);
         for (int slot = 18; slot <= 26; slot++) {
             if (slot == LEFT_CENTER || slot == MID_CENTER || slot == RIGHT_CENTER) continue;
             inv.setItem(slot, focus);
         }
-        // 초기 릴: 다이아몬드 고정 (위/중앙/아래 모두 다이아)
         placeReelInitial(inv, LEFT_TOP, LEFT_CENTER, LEFT_BOTTOM);
         placeReelInitial(inv, MID_TOP, MID_CENTER, MID_BOTTOM);
         placeReelInitial(inv, RIGHT_TOP, RIGHT_CENTER, RIGHT_BOTTOM);
-        // 증감 버튼(3개씩)과 스핀/표시/취소 배치
-        int s = betStep;
-        int s10 = s * 10;
-        int s100 = s * 100;
-        inv.setItem(BET_DEC_SLOT_BIG, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s100), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
-        inv.setItem(BET_DEC_SLOT_MID, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s10), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
-        inv.setItem(BET_DEC_SLOT_SMALL, createItem(Material.RED_CONCRETE, ChatColor.RED + "베팅 - " + fmt(s), List.of(ChatColor.GRAY + "최소: " + fmt(minBet)), false));
-        inv.setItem(SPIN_SLOT, createItem(Material.EMERALD_BLOCK, ChatColor.GOLD + "스핀 시작", List.of(ChatColor.GRAY + "클릭하여 회전"), false));
-        inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + fmt(bet)), false));
-        inv.setItem(BET_INC_SLOT_SMALL, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
-        inv.setItem(BET_INC_SLOT_MID, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s10), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
-        inv.setItem(BET_INC_SLOT_BIG, createItem(Material.LIME_CONCRETE, ChatColor.GREEN + "베팅 + " + fmt(s100), List.of(ChatColor.GRAY + "최대: " + fmt(maxBet)), false));
-        inv.setItem(EXIT_SLOT, createItem(Material.REDSTONE, ChatColor.RED + "취소", null, false));
+        int s = betStep; int s10 = s * 10; int s100 = s * 100;
+        inv.setItem(BET_DEC_SLOT_BIG, createItem(Material.RED_CONCRETE, plugin.tr("slots.bet_dec", Map.of("amount", fmt(s100))), List.of(plugin.tr("slots.bet_min_lore", Map.of("min", fmt(minBet)))), false));
+        inv.setItem(BET_DEC_SLOT_MID, createItem(Material.RED_CONCRETE, plugin.tr("slots.bet_dec", Map.of("amount", fmt(s10))), List.of(plugin.tr("slots.bet_min_lore", Map.of("min", fmt(minBet)))), false));
+        inv.setItem(BET_DEC_SLOT_SMALL, createItem(Material.RED_CONCRETE, plugin.tr("slots.bet_dec", Map.of("amount", fmt(s))), List.of(plugin.tr("slots.bet_min_lore", Map.of("min", fmt(minBet)))), false));
+        inv.setItem(SPIN_SLOT, createItem(Material.EMERALD_BLOCK, plugin.tr("slots.spin_button"), List.of(plugin.tr("slots.spin_button_lore")), false));
+        inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, plugin.tr("slots.bet_display_title"), List.of(plugin.tr("slots.bet_display_lore", Map.of("bet", fmt(bet)))), false));
+        inv.setItem(BET_INC_SLOT_SMALL, createItem(Material.LIME_CONCRETE, plugin.tr("slots.bet_inc", Map.of("amount", fmt(s))), List.of(plugin.tr("slots.bet_max_lore", Map.of("max", fmt(maxBet)))), false));
+        inv.setItem(BET_INC_SLOT_MID, createItem(Material.LIME_CONCRETE, plugin.tr("slots.bet_inc", Map.of("amount", fmt(s10))), List.of(plugin.tr("slots.bet_max_lore", Map.of("max", fmt(maxBet)))), false));
+        inv.setItem(BET_INC_SLOT_BIG, createItem(Material.LIME_CONCRETE, plugin.tr("slots.bet_inc", Map.of("amount", fmt(s100))), List.of(plugin.tr("slots.bet_max_lore", Map.of("max", fmt(maxBet)))), false));
+        inv.setItem(EXIT_SLOT, createItem(Material.REDSTONE, plugin.tr("slots.exit_button"), null, false));
         player.openInventory(inv);
         if (existing == null) {
             SlotSpinSession session = new SlotSpinSession(this, player.getUniqueId(), bet, inv);
@@ -190,71 +184,66 @@ public class SlotMachineManager {
         SlotSpinSession session = sessions.get(player.getUniqueId());
         if (session == null || session.getState() != SlotSpinSession.State.IDLE) return;
         int bet = session.getBet();
-        long next = (long) bet + delta; // overflow 방지
-        if (next < minBet) next = minBet;
-        if (next > maxBet) next = maxBet;
+        long next = (long) bet + delta;
+        if (next < minBet) next = minBet; if (next > maxBet) next = maxBet;
         session.setBet((int) next);
         Inventory inv = session.getInventory();
         if (inv != null) {
-            inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, ChatColor.YELLOW + "베팅 금액", List.of(ChatColor.WHITE + "현재: ₩" + fmt(session.getBet())), false));
-            // UI를 깔끔히 갱신하기 위해 재오픈
-            player.closeInventory();
-            Bukkit.getScheduler().runTask(plugin, () -> openGui(player));
+            inv.setItem(BET_DISPLAY_SLOT, createItem(Material.PAPER, plugin.tr("slots.bet_display_title"), List.of(plugin.tr("slots.bet_display_lore", Map.of("bet", fmt(session.getBet())))), false));
         }
     }
 
     public void startSpin(Player player) {
-        SlotSpinSession session = sessions.get(player.getUniqueId());
-        if (session == null) return;
-        if (session.getState() == SlotSpinSession.State.SPINNING) return;
-        long now = System.currentTimeMillis();
-        Long last = cooldowns.get(player.getUniqueId());
+        SlotSpinSession session = sessions.get(player.getUniqueId()); if (session == null) return; if (session.getState() == SlotSpinSession.State.SPINNING) return;
+        long now = System.currentTimeMillis(); Long last = cooldowns.get(player.getUniqueId());
         if (last != null) {
             long remain = (cooldownSeconds * 1000L - (now - last));
-            if (remain > 0) {
-                player.sendMessage(ChatColor.GRAY + "[슬롯머신] " + ChatColor.WHITE + "쿨다운 중입니다. " + (remain / 1000.0) + "s 남음.");
-                return;
-            }
+            if (remain > 0) { player.sendMessage(plugin.tr("slots.cooldown", Map.of("remain", String.format("%.1f", remain/1000.0)))); return; }
         }
         int bet = session.getBet();
-        if (economy.getBalance(player) < bet) {
-            player.sendMessage(ChatColor.RED + "[슬롯머신] 잔액이 부족합니다. 현재 잔액: ₩" + fmt((long) economy.getBalance(player)));
-            return;
-        }
+        if (economy.getBalance(player) < bet) { player.sendMessage(plugin.tr("slots.insufficient", Map.of("balance", fmt((long) economy.getBalance(player))))); return; }
         economy.withdrawPlayer(player, bet);
-        player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "스핀을 시작합니다... ₩" + fmt(bet) + "가 베팅되었습니다.");
+        player.sendMessage(plugin.tr("slots.spin_start", Map.of("bet", fmt(bet))));
         cooldowns.put(player.getUniqueId(), now);
         session.beginSpin(frameInterval, leftFrames, middleDelay, rightDelay);
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.6f, 1.2f);
     }
 
     public void finishSpin(SlotSpinSession session, SlotSymbol left, SlotSymbol mid, SlotSymbol right) {
-        Player player = Bukkit.getPlayer(session.getPlayerUUID());
-        if (player == null) return;
-        int bet = session.getBet();
-        double payoutMultiplier = 0.0;
-        boolean triple = left == mid && mid == right;
-        boolean twoMatch = !triple && (left == mid || left == right || mid == right);
+        Player player = Bukkit.getPlayer(session.getPlayerUUID()); if (player == null) return;
+        int bet = session.getBet(); double payoutMultiplier = 0.0;
+        boolean triple = left == mid && mid == right; boolean twoMatch = !triple && (left == mid || left == right || mid == right);
+        if (triple) { payoutMultiplier = plugin.getConfig().getDouble("slotmachine.payouts." + left.name(), 0.0); }
+        else if (twoMatch) { payoutMultiplier = twoMatchMultiplier; }
+        long grossPayout = Math.round(bet * payoutMultiplier); long netPayout = 0L;
+        if (grossPayout > 0) { double taxed = ((casino)plugin).applyHouseTax(grossPayout); netPayout = Math.round(taxed); if (netPayout > 0) economy.depositPlayer(player, netPayout); }
+        long taxAmount = grossPayout - netPayout;
         if (triple) {
-            payoutMultiplier = plugin.getConfig().getDouble("slotmachine.payouts." + left.name(), 0.0);
-        } else if (twoMatch) {
-            payoutMultiplier = twoMatchMultiplier;
-        }
-        long payout = Math.round(bet * payoutMultiplier);
-        if (payout > 0) economy.depositPlayer(player, payout);
-        if (triple) {
-            if (payoutMultiplier >= 100 && jackpotAnnounce && payout >= jackpotMinBroadcastPayout) {
-                Bukkit.broadcastMessage(ChatColor.DARK_PURPLE + "[카지노] " + ChatColor.AQUA + player.getName() + ChatColor.WHITE + "님이 슬롯머신에서 " + ChatColor.AQUA + "다이아몬드 3개" + ChatColor.WHITE + "로 ₩" + fmt(payout) + "를 획득했습니다!");
+            if (payoutMultiplier >= 100 && jackpotAnnounce && netPayout >= jackpotMinBroadcastPayout) {
+                Bukkit.broadcastMessage(plugin.tr("slots.jackpot_broadcast", Map.of("player", player.getName(), "symbol", left.getDisplayName(), "net", fmt(netPayout))));
             }
-            if (left == SlotSymbol.DIAMOND) player.playSound(player.getLocation(), Sound.ENTITY_FIREWORK_ROCKET_BLAST, 1f, 1f); else player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.2f);
-            player.sendMessage(ChatColor.GOLD + "[슬롯머신] " + ChatColor.WHITE + "축하합니다! " + left.getDisplayName() + ChatColor.WHITE + " 3개 일치 — 상금 ₩" + fmt(payout) + " 지급!");
-            if (jackpotAdminLog && left == SlotSymbol.DIAMOND) plugin.getLogger().info("JACKPOT | player:" + player.getName() + " uuid:" + player.getUniqueId() + " bet:" + bet + " payout:" + payout + " result:DIAMONDx3");
+            String taxSuffix = taxAmount>0? plugin.tr("slots.triple_tax_suffix", Map.of("tax", fmt(taxAmount))):"";
+            player.sendMessage(plugin.tr("slots.triple_win", Map.of(
+                    "symbol", left.getDisplayName(),
+                    "gross", fmt(grossPayout),
+                    "taxSuffix", taxSuffix,
+                    "net", fmt(netPayout)
+            )));
+            if (jackpotAdminLog && left == SlotSymbol.DIAMOND) plugin.getLogger().info("JACKPOT | player:" + player.getName() + " uuid:" + player.getUniqueId() + " bet:" + bet + " gross:" + grossPayout + " tax:" + taxAmount + " net:" + netPayout + " result:DIAMONDx3");
         } else if (twoMatch) {
             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.6f, 1.4f);
-            player.sendMessage(ChatColor.YELLOW + "[슬롯머신] " + ChatColor.WHITE + "2개 일치! 환급 ₩" + fmt(payout) + " 지급.");
+            if (netPayout > 0) {
+                String taxSuffix = taxAmount>0? plugin.tr("slots.triple_tax_suffix", Map.of("tax", fmt(taxAmount))):"";
+                player.sendMessage(plugin.tr("slots.two_match_win", Map.of(
+                        "gross", fmt(grossPayout),
+                        "taxSuffix", taxSuffix,
+                        "net", fmt(netPayout)
+                )));
+            } else {
+                player.sendMessage(plugin.tr("slots.two_match_no_net"));
+            }
         } else {
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.7f, 0.8f);
-            player.sendMessage(ChatColor.RED + "[슬롯머신] " + ChatColor.WHITE + "꽝! 다음에 다시 도전해보세요.");
+            player.sendMessage(plugin.tr("slots.lose"));
         }
         session.setState(SlotSpinSession.State.IDLE);
     }

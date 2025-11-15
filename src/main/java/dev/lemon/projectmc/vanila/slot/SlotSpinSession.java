@@ -42,7 +42,6 @@ public class SlotSpinSession {
         leftRunning = true; midRunning = true; rightRunning = true;
         finalLeft = null; finalMid = null; finalRight = null;
 
-        int stopLeft = leftFrames;
         int stopMid = leftFrames + middleDelay;
         int stopRight = stopMid + rightDelay;
 
@@ -55,7 +54,7 @@ public class SlotSpinSession {
             if (rightRunning) animateReel(SlotMachineManager.RIGHT_TOP, SlotMachineManager.RIGHT_CENTER, SlotMachineManager.RIGHT_BOTTOM);
 
             // 정지 시점 도달 시 실제 확률로 최종 결과 확정
-            if (leftRunning && globalFrame >= stopLeft) {
+            if (leftRunning && globalFrame >= leftFrames) {
                 leftRunning = false;
                 finalLeft = manager.randomSymbol(animationRandom); // 실제 확률
                 setFinalReel(finalLeft, SlotMachineManager.LEFT_TOP, SlotMachineManager.LEFT_CENTER, SlotMachineManager.LEFT_BOTTOM);

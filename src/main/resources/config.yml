@@ -1,35 +1,285 @@
+# =============================
+# Casino Plugin 설정 파일
+# - 금액: 정수(원) 기준
+# - 퍼센트: 0~100 (일부 확률/승률은 합이 100이 아니어도 내부에서 정규화)
+# - 수정 후 /casino reload 또는 서버 재시작 필요
+# - RTP(세전)는 house.tax-percent 적용 전 기준이며 실제 수령액은 세율만큼 감소
+# =============================
+house:
+  tax-percent: 5.0 # 지급금에서 공제할 하우스 세율(%) - 0이면 세금 없음
+
+coinflip:
+  # 코인플립 기본 설정
+  # min-bet / max-bet: 허용 베팅 범위
+  # animation-ticks: 애니메이션 길이(틱, 1틱≈0.05초)
+  # heads-name / tails-name: GUI 및 결과 메시지에 표시되는 면 이름
+  min-bet: 1000
+  max-bet: 200000
+  animation-ticks: 20 # 코인 회전 연출 총 틱
+  heads-name: "앞면"
+  tails-name: "뒷면"
+
+rsp:
+  # 가위바위보(RSP) 설정
+  # challenge-timeout-seconds: 도전 수락 대기 시간(초) 경과 시 자동 취소/환불
+  # bot-win-rate-percent: 봇이 플레이어를 이길 확률(난이도 조절)
+  # min-bet / max-bet: 베팅 범위
+  challenge-timeout-seconds: 60
+  min-bet: 1000
+  max-bet: 400000
+  bot-win-rate-percent: 50 # 봇 사용 시 승률(무작위 조정 가중치)
+
+dice:
+  # 주사위 게임 설정
+  # base-multiplier: 1개 선택 시 배당. 선택 n개면 배당≈base/n (확률과 배당 균형)
+  # min-bet / max-bet / roll-animation-ticks: 베팅/애니메이션 기본
+  min-bet: 1000
+  max-bet: 100000
+  roll-animation-ticks: 30
+  base-multiplier: 5.7
+
+scratch:
+  # 즉석 복권 설정
+  # ticket-price: 티켓 1장 가격
+  # game-count: 한 티켓 내 소게임(3심볼+상금칸) 수 (가로 배치 규칙 적용)
+  # prizes: 3심볼 모두 동일(승리 패턴)일 때 실제로 지급되는 상금 목록 + 상대확률(probability 합 자유)
+  # match-win-percent: 각 소게임이 "승리 패턴"으로 생성될 확률(%)
+  # win-symbols / lose-symbols: 심볼 풀(연출 및 GUI 표시)
+  # preview-prizes: 패턴이 아닐 때 보여줄 가짜(프리뷰) 금액 테이블 (심리적 연출, 지급 X)
+  ticket-price: 2000
+  game-count: 8 # 6 -> 8 (요청 사항: 게임 수 증가)
+  prizes:
+    - amount: 50000000
+      probability: 1
+    - amount: 5000000
+      probability: 4
+    - amount: 5000000
+      probability: 30
+    - amount: 500000
+      probability: 180
+    - amount: 50000
+      probability: 1650
+    - amount: 5000
+      probability: 12750
+    - amount: 1000
+      probability: 10000
+  match-win-percent: 3
+  win-symbols:
+    - EMERALD
+    - GOLD_INGOT
+  lose-symbols:
+    - COAL
+    - LAPIS_LAZULI
+    - REDSTONE
+  preview-prizes:
+    - amount: 100000000
+      probability: 100
+    - amount: 10000000
+      probability: 150
+    - amount: 1000000
+      probability: 200
+    - amount: 100000
+      probability: 250
+    - amount: 10000
+      probability: 300
+    - amount: 2000
+      probability: 350
+
+lottery:
+  # 로또 설정
+  # pool: 회차 기본 자금(잭팟 풀). 잭팟 당첨 없고 rollover-unpaid=true면 남은 금액 이월
+  # number-range-max / pick-count / bonus-enabled: 숫자 범위, 선택 개수, 보너스번호 사용 여부
+  # max-tickets-per-player: 플레이어별 구매 제한
+  # tiers: 백워드 호환 퍼센트 (definitions 병행 시 함께 사용 가능)
+  # definitions: 각 등수(match / bonus-required / payout.type(pool-percent|fixed) / value)
+  ticket-price: 5000
+  draw-interval-minutes: 45
+  pool: 10000000
+  number-range-max: 38
+  pick-count: 6
+  rollover-unpaid: true
+  max-tickets-per-player: 100
+  tiers:
+    first: 75
+    second: 10
+    third: 5
+    fourth: 3
+    fifth: 2
+    definitions:
+      - name: "1등"
+        match: 6
+        bonus-required: false
+        payout:
+          type: pool-percent
+          value: 75
+      - name: "2등"
+        match: 5
+        bonus-required: true
+        payout:
+          type: pool-percent
+          value: 10
+      - name: "3등"
+        match: 5
+        bonus-required: false
+        payout:
+          type: pool-percent
+          value: 5
+      - name: "4등"
+        match: 4
+        bonus-required: false
+        payout:
+          type: fixed
+          value: 50000
+      - name: "5등"
+        match: 3
+        bonus-required: false
+        payout:
+          type: fixed
+          value: 5000
+
+horse:
+  # 경마 설정
+  # mode: fate(난수 기반 진행) | chance(사전 승률로 우승자 결정 후 연출)
+  # tie-policy: 동시 결승 처리 방식(random | lowest-index | all)
+  # fate.horses: 실제 난수 진행 사용(이동확률, 속도범위, 배당)
+  # chance.win-probabilities: 승률 목록(합 자유, 내부 정규화) + 배당. show-win-probabilities: 표시 여부
+  # chance.visual: 연출용 속도/이동확률 (chance 모드에서 결과 결정엔 영향 X)
+  min-bet: 1000
+  max-bet: 100000
+  track-length: 40
+  mode: chance
+  tie-policy: random
+  fate:
+    horses:
+      - name: "레드"
+        speed-min: 3
+        speed-max: 5
+        move-chance-percent: 60
+        payout-multiplier: 1.8
+      - name: "블루"
+        speed-min: 2
+        speed-max: 6
+        move-chance-percent: 50
+        payout-multiplier: 3.0
+      - name: "그린"
+        speed-min: 1
+        speed-max: 7
+        move-chance-percent: 40
+        payout-multiplier: 5.0
+      - name: "블랙"
+        speed-min: 1
+        speed-max: 8
+        move-chance-percent: 35
+        payout-multiplier: 10.0
+      - name: "화이트"
+        speed-min: 1
+        speed-max: 10
+        move-chance-percent: 20
+        payout-multiplier: 20.0
+  chance:
+    visual:
+      tick-interval: 2
+      speed-min: 1
+      speed-max: 3
+      move-chance-percent: 70
+    show-win-probabilities: true
+    win-probabilities:
+      - name: "레드"
+        probability: 40.0
+        payout-multiplier: 2.38
+      - name: "블루"
+        probability: 25.0
+        payout-multiplier: 3.80
+      - name: "그린"
+        probability: 18.0
+        payout-multiplier: 5.28
+      - name: "블랙"
+        probability: 12.0
+        payout-multiplier: 7.92
+      - name: "화이트"
+        probability: 5.0
+        payout-multiplier: 19.0
+
 slotmachine:
+  # 슬롯머신 설정
+  # two-match-multiplier: 두 개 일치 배당 (0이면 무보상)
+  # payouts: 3개 일치 시 (베팅 * 배당) 기준 지급 배수
+  # probabilities: 심볼 등장 상대확률 (합 100 권장)
+  # animation.*: 시각 연출 관련 (결과 결정 로직은 reel probabilities 기반)
+  # cooldown-seconds: 연속 스핀 간 최소 대기
   bet:
-    min: 10
-    max: 10000
-    step: 10
-  cooldown-seconds: 3
-  two-match-multiplier: 0.5
+    min: 1000
+    max: 50000
+    step: 500
+  cooldown-seconds: 1
+  two-match-multiplier: 0.395
   payouts:
-    DIAMOND: 100
-    EMERALD: 20
-    GOLDEN_APPLE: 5
-    APPLE: 2
-    COAL: 1
-  probabilities: # 퍼센트 단위 (합 100)
-    DIAMOND: 0.5
-    EMERALD: 2.0
-    GOLDEN_APPLE: 7.5
-    APPLE: 20.0
-    COAL: 70.0
+    DIAMOND: 1000
+    EMERALD: 200
+    GOLDEN_APPLE: 50
+    APPLE: 10
+    COAL: 2
+  probabilities:
+    DIAMOND: 1.0
+    EMERALD: 4.0
+    GOLDEN_APPLE: 15.0
+    APPLE: 30.0
+    COAL: 50.0
   animation:
     frame-interval-ticks: 2
     left-frames: 22
-    middle-frames-delay: 6 # 좌 -> 중 지연 프레임
-    right-frames-delay: 6  # 중 -> 우 지연 프레임
-    no-consecutive-center-duplicate: true # 중앙 라인(포커스) 같은 심볼 연속 방지
-    visual-probabilities: # 연출(애니메이션)용 가중치 (합 필요 없음, 비율로 처리). 고등급 많이 보이도록 기본값.
-      DIAMOND: 40
+    middle-frames-delay: 6
+    right-frames-delay: 6
+    no-consecutive-center-duplicate: true
+    visual-probabilities:
+      DIAMOND: 30
       EMERALD: 25
-      GOLDEN_APPLE: 15
-      APPLE: 10
+      GOLDEN_APPLE: 20
+      APPLE: 15
       COAL: 10
   jackpot:
     announce: true
     admin-log: true
-    minimum-broadcast-payout: 0 # 0이면 모든 잭팟 방송
+    minimum-broadcast-payout: 100000
+
+logging:
+  # 로깅 설정
+  # format: 전체 로그 포맷. {ts},{level},{summary},{message},{thread} 플레이스홀더 지원
+  # templates.*: summary 또는 key 별 커스텀 메시지 템플릿
+  # event-templates: event 타입 과거 호환(templates.event.by-key 병행)
+  debug: false
+  include-thread: false
+  format: "{ts} [{level}] {plugin} {summary} | {message}"
+  timestamp-pattern: "yyyy-MM-dd HH:mm:ss.SSSX"
+  templates:
+    info:
+      default: "{message}"
+      by-summary:
+        lottery_reload: "LOTTERY RELOAD ticketPrice={ticketPrice} intervalMin={intervalMin} poolBase={poolBase}"
+    warn:
+      default: "{message}"
+    error:
+      default: "{message}"
+    kv:
+      default: "{all}"
+      by-summary:
+        lottery_draw_alloc: "ALLOC pool={pool} c1={c1} c2={c2} c3={c3} c4={c4} c5={c5}"
+    event:
+      default: "{all}"
+      by-key:
+        lottery.purchase: "LOTTERY 구매 player={player} numbers={numbers} price={price} pool_before={pool_before} pool_after={pool_after} owned_after={owned_after}"
+        lottery.draw_end: "LOTTERY 추첨결과 win={win} bonus={bonus} paid={paid} leftover={leftover} next_pool={pool_next} jackpot_hit={jackpot_hit} tickets={tickets}"
+        lottery.tier_alloc: "LOTTERY 티어분배 tier={tier} winners={winners} allocation={allocation} each={each}"
+        lottery.payout: "LOTTERY 지급 tier={tier} player={player} gross={gross} net={net} tax={tax}"
+        horse.win: "HORSE 승리 player={player} bet={bet} net={net}"
+        horse.lose: "HORSE 패배 player={player} bet={bet} winner={winner}"
+        slots.jackpot: "SLOTS 잭팟 player={player} symbol={symbol} gross={gross} net={net}"
+
+  event-templates:
+    lottery.purchase: "LOTTERY 구매 player={player} numbers={numbers} price={price} pool_before={pool_before} pool_after={pool_after} owned_after={owned_after}"
+    lottery.draw_end: "LOTTERY 추첨결과 win={win} bonus={bonus} paid={paid} leftover={leftover} next_pool={pool_next} jackpot_hit={jackpot_hit} tickets={tickets}"
+    lottery.tier_alloc: "LOTTERY 티어분배 tier={tier} winners={winners} allocation={allocation} each={each}"
+    lottery.payout: "LOTTERY 지급 tier={tier} player={player} gross={gross} net={net} tax={tax}"
+    horse.win: "HORSE 승리 player={player} bet={bet} net={net}"
+    horse.lose: "HORSE 패배 player={player} bet={bet} winner={winner}"
+    slots.jackpot: "SLOTS 잭팟 player={player} symbol={symbol} gross={gross} net={net}"

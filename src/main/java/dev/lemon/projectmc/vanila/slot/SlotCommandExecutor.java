@@ -1,6 +1,6 @@
 package dev.lemon.projectmc.vanila.slot;
-// TODO: 금액 추가, 감소 버튼 3개 정도로 추가
-import org.bukkit.ChatColor;
+
+import dev.lemon.projectmc.vanila.casino;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -15,13 +15,14 @@ public class SlotCommandExecutor implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        casino plugin = manager.getPlugin();
         if (args.length == 0) {
             if (!(sender instanceof Player p)) {
-                sender.sendMessage(ChatColor.RED + "플레이어만 사용할 수 있습니다.");
+                sender.sendMessage(plugin.tr("slots.cmd_player_only"));
                 return true;
             }
             if (!p.hasPermission("casino.slots.use")) {
-                p.sendMessage(ChatColor.RED + "권한이 없습니다.");
+                p.sendMessage(plugin.tr("slots.cmd_no_permission"));
                 return true;
             }
             manager.openGui(p);
@@ -29,27 +30,26 @@ public class SlotCommandExecutor implements CommandExecutor {
         }
         // admin subcommands
         if (!sender.hasPermission("casino.slots.admin")) {
-            sender.sendMessage(ChatColor.RED + "권한이 없습니다.");
+            sender.sendMessage(plugin.tr("slots.cmd_no_permission"));
             return true;
         }
         switch (args[0].toLowerCase()) {
             case "reload":
                 manager.reload();
-                sender.sendMessage(ChatColor.YELLOW + "[슬롯머신] 설정을 새로 고쳤습니다.");
+                sender.sendMessage(plugin.tr("slots.cmd_reload_done"));
                 return true;
             case "announcejackpot":
                 if (args.length < 2) {
-                    sender.sendMessage(ChatColor.RED + "사용법: /slots announcejackpot <on|off>");
+                    sender.sendMessage(plugin.tr("slots.cmd_usage_announcejackpot"));
                     return true;
                 }
                 boolean val = args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("true");
                 manager.toggleJackpotAnnounce(val);
-                sender.sendMessage(ChatColor.YELLOW + "[슬롯머신] 잭팟 방송: " + (val ? ChatColor.GREEN + "ON" : ChatColor.RED + "OFF"));
+                sender.sendMessage(val? plugin.tr("slots.cmd_jackpot_announce_on") : plugin.tr("slots.cmd_jackpot_announce_off"));
                 return true;
             default:
-                sender.sendMessage(ChatColor.RED + "알 수 없는 하위 명령. (reload / announcejackpot)");
+                sender.sendMessage(plugin.tr("slots.cmd_unknown_subcommand"));
                 return true;
         }
     }
 }
-
