@@ -25,6 +25,7 @@ public class CoinFlipManager implements Listener {
     private int minBet, maxBet, animTicks;
     private String headsName, tailsName;
     private final Map<UUID, Session> sessions = new HashMap<>();
+    private volatile boolean shuttingDown = false;
 
     private static final int INV_SIZE = 27;
     private static final int HEADS_SLOT = 11;
@@ -43,6 +44,12 @@ public class CoinFlipManager implements Listener {
         animTicks = plugin.getConfig().getInt("coinflip.animation-ticks", 40);
         headsName = plugin.getConfig().getString("coinflip.heads-name", "앞면");
         tailsName = plugin.getConfig().getString("coinflip.tails-name", "뒷면");
+    }
+
+    public void shutdown(){
+        shuttingDown = true;
+        // 세션 단순 정리(애니메이션은 짧으므로 별도 취소 없음)
+        sessions.clear();
     }
 
     public void open(Player p, long bet) {
@@ -109,6 +116,7 @@ public class CoinFlipManager implements Listener {
     @EventHandler public void onDrag(InventoryDragEvent e) { if (isOurInv(e.getView().title())) e.setCancelled(true); }
     @EventHandler public void onClose(InventoryCloseEvent e) {
         if (!(e.getPlayer() instanceof Player p)) return; if (!isOurInv(e.getView().title())) return;
+        if (shuttingDown) return;
         Session s = sessions.get(p.getUniqueId()); if (s==null) return;
         if (s.state!=State.DONE) Bukkit.getScheduler().runTask(plugin, ()-> p.openInventory(s.inv));
     }

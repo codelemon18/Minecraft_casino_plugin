@@ -24,9 +24,16 @@ public class DiceManager implements Listener {
     private final Map<UUID, Session> sessions = new HashMap<>();
     private static final int RETRY_SLOT = 25; // 결과 후 재시작 버튼
     private static final int EXIT_SLOT = 26;  // 결과 후 종료 버튼
+    private volatile boolean shuttingDown = false;
 
     public DiceManager(casino plugin){ this.plugin=plugin; reload(); Bukkit.getPluginManager().registerEvents(this, plugin);}
     public void reload(){ minBet=plugin.getConfig().getInt("dice.min-bet",10); maxBet=plugin.getConfig().getInt("dice.max-bet",10000); animTicks=plugin.getConfig().getInt("dice.roll-animation-ticks",30); baseMulti=plugin.getConfig().getDouble("dice.base-multiplier",5.0);}
+
+    public void shutdown(){
+        shuttingDown = true;
+        for (Session s : sessions.values()) if (s.task!=null) { try { s.task.cancel(); } catch (Throwable ignored) {} }
+        sessions.clear();
+    }
 
     public void open(Player p){
         Inventory inv = Bukkit.createInventory(p, 27, plugin.tr("dice.gui_title_select", Map.of("bet", 0))); // bet 0 placeholder
@@ -142,6 +149,7 @@ public class DiceManager implements Listener {
 
     @EventHandler public void onClose(InventoryCloseEvent e){
         if (!(e.getPlayer() instanceof Player p)) return; Session s=sessions.get(p.getUniqueId()); if (s==null) return; if (s.transitioning) return; // 전환중 무시
+        if (shuttingDown) { sessions.remove(p.getUniqueId()); return; }
         if (s.phase==Phase.DONE){ sessions.remove(p.getUniqueId()); return; }
         // 진행 중 닫기 -> 재오픈 (무한루프 방지 지연 1틱, 강제 닫기 원하면 EXIT 버튼 사용)
         Bukkit.getScheduler().runTask(plugin, ()->{ if (p.isOnline() && sessions.containsKey(p.getUniqueId())) p.openInventory(s.inv); });

@@ -1,0 +1,25 @@
+name: Casino
+main: dev.lemon.projectmc.vanila.casino
+version: 1.0-SNAPSHOT
+author: lemon
+depend: [Vault]
+softdepend: [LemonLib]
+api-version: '1.21'
+commands:
+  casino:
+    description: Casino main command
+    usage: /casino
+    permission: casino.use
+  slots:
+    description: Open slot machine
+    usage: /slots
+    permission: casino.slots.use
+permissions:
+  casino.use:
+    default: true
+  casino.admin:
+    default: op
+  casino.slots.use:
+    default: true
+  casino.slots.admin:
+    default: op

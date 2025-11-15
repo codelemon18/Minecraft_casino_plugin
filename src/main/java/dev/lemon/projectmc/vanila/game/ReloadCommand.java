@@ -15,6 +15,15 @@ public class ReloadCommand implements CommandExecutor {
         if (sender instanceof Player p) {
             if (!p.hasPermission("casino.admin")) { p.sendMessage(plugin.tr("common.no_permission")); return true; }
         }
+        // 먼저 모든 매니저 종료
+        try { if (plugin.getSlotMachineManager()!=null) plugin.getSlotMachineManager().shutdown(); } catch (Throwable ignored) {}
+        try { plugin.getCoinFlipManager().shutdown(); } catch (Throwable ignored) {}
+        try { plugin.getRspManager().shutdown(); } catch (Throwable ignored) {}
+        try { plugin.getDiceManager().shutdown(); } catch (Throwable ignored) {}
+        try { plugin.getScratchManager().shutdown(); } catch (Throwable ignored) {}
+        try { plugin.getHorseManager().shutdown(); } catch (Throwable ignored) {}
+
+        // 설정/언어/로깅 재적용 및 각 매니저 재로딩
         plugin.reloadHouseSettings();
         plugin.getCoinFlipManager().reload();
         plugin.getRspManager().reload();

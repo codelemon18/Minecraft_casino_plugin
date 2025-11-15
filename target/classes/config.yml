@@ -22,14 +22,12 @@ coinflip:
 rsp:
   # 가위바위보(RSP) 설정
   # challenge-timeout-seconds: 도전 수락 대기 시간(초) 경과 시 자동 취소/환불
+  # bot-win-rate-percent: 봇이 플레이어를 이길 확률(난이도 조절)
   # min-bet / max-bet: 베팅 범위
   challenge-timeout-seconds: 60
   min-bet: 1000
   max-bet: 400000
-  bot-weights:
-    win: 50
-    draw: 15
-    lose: 35
+  bot-win-rate-percent: 50 # 봇 사용 시 승률(무작위 조정 가중치)
 
 dice:
   # 주사위 게임 설정
@@ -140,13 +138,15 @@ lottery:
           value: 5000
 
 horse:
-  # 경마 설정 (chance 모드 시각 효과는 horse.chance.visual로 제어)
+  # 경마 설정 (시각 효과는 내부 로직으로 적용됩니다)
+  # mode: fate(난수 기반 진행) | chance(사전 승률로 승자 결정 후 연출)
+  # tie-policy: 동시 결승 처리 방식 (random | lowest-index | all)
+  # track-length: 내부 스텝 길이를 결정합니다. 마지막 칸에 도달하는 즉시 우승하도록 렌더링/판정이 매핑됩니다.
   min-bet: 1000
   max-bet: 100000
   track-length: 40
   mode: chance
   tie-policy: random
-
   fate:
     horses:
       - name: "레드"
@@ -193,37 +193,6 @@ horse:
       - name: "화이트"
         probability: 5.0
         payout-multiplier: 19.0
-    visual:
-      # 레이스 갱신 주기(틱). 1이면 가장 부드러움, 성능에 따라 2~3 권장 가능
-      period-ticks: 1
-      # 패턴 등장 확률 가중치(합은 자동 정규화). 0을 주면 해당 패턴 제외
-      pattern-probabilities:
-        dominant: 30       # 초반부터 우세 유지
-        comeback: 25       # 역전극(후반 강세)
-        neck-and-neck: 35  # 접전(비슷하게 이동)
-        random: 10         # 기본값 + 약간의 노이즈
-      # 패턴별 보정 강도 설정
-      dominant:
-        early-boost: 20            # 우승자 초반 가산치
-        late-boost: 10             # 우승자 후반 가산치
-        others-penalty-early: 10   # 비우승 초반 감산치
-        others-penalty-late: 5     # 비우승 후반 감산치
-      comeback:
-        early-penalty: 15          # 우승자 초반 감산치
-        late-boost: 25             # 우승자 후반 가산치
-        others-early-boost: 10     # 비우승 초반 가산치
-        others-late-penalty: 10    # 비우승 후반 감산치
-      neck-and-neck:
-        base-chance: 60            # 기본 이동 확률 기준값
-        jitter: 5                  # +- 범위 노이즈
-        max-extra-speed: 2         # smin 대비 추가 허용 속도
-      random:
-        jitter: 3                  # +- 범위 노이즈
-      # chance 모드(사전 승자 연출)의 시각 파라미터 (결과에 영향 없음, 연출 전용)
-      chance-mode:
-        visual-chance: 70
-        visual-speed-min: 1
-        visual-speed-max: 3
 
 slotmachine:
   # 슬롯머신 설정

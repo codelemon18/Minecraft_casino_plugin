@@ -1,7 +1,6 @@
 package dev.lemon.projectmc.vanila.game;
 
 import dev.lemon.projectmc.vanila.casino;
-// LoggerBridge 임시 제거: 컴파일 대상 jar에 존재하지 않아 직접 로거 사용
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Sound;
@@ -13,7 +12,6 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-// Adventure Components for clickable chat (수락/거절 프롬프트에만 사용)
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -21,7 +19,9 @@ import net.kyori.adventure.text.event.HoverEvent;
 
 public class RspManager implements Listener {
     private final casino plugin;
-    private int minBet, maxBet, timeoutSec, botWinRate;
+    private int minBet, maxBet, timeoutSec;
+    // 봇 결과 가중치(설정값). win/draw/lose 합은 내부에서 정규화하여 사용
+    private int botWeightWin = 50, botWeightDraw = 15, botWeightLose = 35;
 
     public RspManager(casino plugin) {
         this.plugin = plugin; reload(); Bukkit.getPluginManager().registerEvents(this, plugin);
@@ -30,7 +30,20 @@ public class RspManager implements Listener {
         minBet = plugin.getConfig().getInt("rsp.min-bet", 10);
         maxBet = plugin.getConfig().getInt("rsp.max-bet", 20000);
         timeoutSec = plugin.getConfig().getInt("rsp.challenge-timeout-seconds", 60);
-        botWinRate = plugin.getConfig().getInt("rsp.bot-win-rate-percent", 50);
+        // 가중치 읽기(없으면 기본값 유지)
+        botWeightWin = plugin.getConfig().getInt("rsp.bot-weights.win", botWeightWin);
+        botWeightDraw = plugin.getConfig().getInt("rsp.bot-weights.draw", botWeightDraw);
+        botWeightLose = plugin.getConfig().getInt("rsp.bot-weights.lose", botWeightLose);
+        // 구키 존재 시 경고 (더 이상 사용하지 않음을 알림)
+        if (plugin.getConfig().contains("rsp.bot-win-rate-percent")) {
+            plugin.getLogger().warning("[RSP] 'rsp.bot-win-rate-percent'는 더 이상 사용되지 않습니다. 'rsp.bot-weights'를 사용하세요.");
+        }
+    }
+
+    public void shutdown(){
+        // 대기/진행 중 상태 정리
+        pendingChallenges.clear();
+        activeGames.clear();
     }
 
     // pendingChallenges: 대상(Player B) -> Challenge(보낸 Player A)
@@ -40,10 +53,11 @@ public class RspManager implements Listener {
 
     // ------------- Command Entry Point -------------
     public void handleCommand(Player sender, String[] args) {
-        if (args.length < 3) { sendHelp(sender); return; }
+        if (args.length < 2) { sendHelp(sender); return; }
 
         // /casino rsp choose <hand>
-        if ("choose".equalsIgnoreCase(args[1])) {
+        if (args.length >= 2 && "choose".equalsIgnoreCase(args[1])) {
+            if (args.length < 3) { sender.sendMessage(ChatColor.RED+"[RSP] 사용법: /casino rsp choose <가위|바위|보>"); return; }
             Game g = activeGames.get(sender.getUniqueId());
             if (g==null) { sender.sendMessage(ChatColor.RED+"[RSP] 진행 중인 게임이 없습니다."); return; }
             Hand hand = parseHand(args[2]);
@@ -51,6 +65,8 @@ public class RspManager implements Listener {
             applyHandChoice(sender, g, hand);
             return;
         }
+
+        if (args.length < 3) { sendHelp(sender); return; }
 
         String targetName = args[1];
         long bet = parseLong(args[2], -1);
@@ -134,7 +150,7 @@ public class RspManager implements Listener {
         Game g = new Game(GameType.BOT, bet, player.getUniqueId(), null);
         activeGames.put(player.getUniqueId(), g);
         player.sendMessage(ChatColor.GRAY+"[RSP] 봇 대결 시작. '/casino rsp choose <가위|바위|보>'로 선택");
-        // 채팅 선택/클릭 버튼 제거
+        sendChoosePrompt(player);
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.1f);
         scheduleGameTimeout(g);
     }
@@ -145,7 +161,8 @@ public class RspManager implements Listener {
         activeGames.put(b.getUniqueId(), g);
         a.sendMessage(ChatColor.GOLD+"[RSP] 대결 시작! '/casino rsp choose <가위|바위|보>'로 선택");
         b.sendMessage(ChatColor.GOLD+"[RSP] 대결 시작! '/casino rsp choose <가위|바위|보>'로 선택");
-        // 채팅 선택/클릭 버튼 제거
+        sendChoosePrompt(a);
+        sendChoosePrompt(b);
         a.playSound(a.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.05f);
         b.playSound(b.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.05f);
         scheduleGameTimeout(g);
@@ -180,7 +197,7 @@ public class RspManager implements Listener {
     // ------------- Resolution -------------
     private void resolveBot(Game g, Player player) {
         Hand playerHand = g.choices.get(player.getUniqueId());
-        Hand botHand = chooseBotHand(playerHand);
+        Hand botHand = chooseBotHandWeighted(playerHand);
         int result = judge(playerHand, botHand);
         if (result == 0) { // draw → 환불
             BetUtil.depositRaw(plugin, player, g.bet);
@@ -275,16 +292,22 @@ public class RspManager implements Listener {
         endGame(g);
     }
 
-    private Hand chooseBotHand(Hand playerHand) {
-        // botWinRate% 확률로 플레이어를 이기게끔 손 선택, 나머지는 무작위(비길 수도 있음)
-        Random r = new Random();
-        boolean botWins = r.nextInt(100) < botWinRate;
-        if (botWins) return counter(playerHand); // 이기게
-        // 무작위 (이길 수도, 비길 수도, 질 수도)
-        return Hand.values()[r.nextInt(Hand.values().length)];
+    private Hand chooseBotHandWeighted(Hand playerHand) {
+        // 설정된 가중치 사용. 전부 0 이하이면 기본 가중치(50/15/35) 사용
+        int wWin = Math.max(0, botWeightWin);
+        int wDraw = Math.max(0, botWeightDraw);
+        int wLose = Math.max(0, botWeightLose);
+        if (wWin + wDraw + wLose <= 0) { wWin = 50; wDraw = 15; wLose = 35; }
+        int sum = wWin + wDraw + wLose;
+        int r = new Random().nextInt(sum);
+        if (r < wWin) return counter(playerHand);            // 봇 승리
+        r -= wWin;
+        if (r < wDraw) return playerHand;                    // 무승부
+        return losingTo(playerHand);                          // 봇 패배
     }
 
     private Hand counter(Hand h) { return switch (h) { case ROCK -> Hand.PAPER; case PAPER -> Hand.SCISSOR; case SCISSOR -> Hand.ROCK; }; }
+    private Hand losingTo(Hand player) { return switch (player) { case ROCK -> Hand.SCISSOR; case PAPER -> Hand.ROCK; case SCISSOR -> Hand.PAPER; }; }
 
     private int judge(Hand a, Hand b) {
         if (a == b) return 0;
@@ -368,6 +391,16 @@ public class RspManager implements Listener {
         Component denyBtn = button("[거절]", NamedTextColor.RED, "/casino rsp "+challengerName+" "+bet+" deny", "도전 거절");
         target.sendMessage(header);
         target.sendMessage(acceptBtn.append(Component.space()).append(denyBtn));
+    }
+
+    private void sendChoosePrompt(Player p){
+        Component header = Component.text("[RSP] 선택: ", NamedTextColor.GOLD)
+                .append(Component.text("가위", NamedTextColor.AQUA).clickEvent(ClickEvent.runCommand("/casino rsp choose 가위")).hoverEvent(HoverEvent.showText(Component.text("가위를 선택", NamedTextColor.WHITE))))
+                .append(Component.space())
+                .append(Component.text("바위", NamedTextColor.YELLOW).clickEvent(ClickEvent.runCommand("/casino rsp choose 바위")).hoverEvent(HoverEvent.showText(Component.text("바위를 선택", NamedTextColor.WHITE))))
+                .append(Component.space())
+                .append(Component.text("보", NamedTextColor.GREEN).clickEvent(ClickEvent.runCommand("/casino rsp choose 보")).hoverEvent(HoverEvent.showText(Component.text("보를 선택", NamedTextColor.WHITE))));
+        p.sendMessage(header);
     }
 
     private Component button(String label, NamedTextColor color, String command, String hover){

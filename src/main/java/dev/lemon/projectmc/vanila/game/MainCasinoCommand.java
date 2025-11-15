@@ -68,6 +68,7 @@ public class MainCasinoCommand implements CommandExecutor, org.bukkit.command.Ta
         p.sendMessage(plugin.tr("help.header_slots", Map.of("label", label)));
     }
 
+    // 안전한 long 파싱 유틸 (범위 외/문자열일 때 기본값 반환)
     private long parseLong(String[] args, int idx, long def) { if (args.length <= idx) return def; try { return Long.parseLong(args[idx]); } catch (NumberFormatException e) { return def; } }
 
     @Override
@@ -75,25 +76,28 @@ public class MainCasinoCommand implements CommandExecutor, org.bukkit.command.Ta
         if (!command.getName().equalsIgnoreCase("casino")) return Collections.emptyList();
         List<String> base = Arrays.asList("coin","flip","rsp","rps","dice","scratch","lottery","horse","slots","reload");
         if (args.length==1){ return filter(base, args[0]); }
-        if (args.length==2){
+        if (args.length>=2){
             String sub=args[0].toLowerCase();
             switch(sub){
-                case "coin","flip","dice","horse" -> { return Collections.singletonList("<베팅>"); }
-                case "rsp","rps" -> {
-                    // 현재 온라인 플레이어 + '봇','bot'
-                    String prefix = args[1].toLowerCase();
-                    List<String> names = new ArrayList<>();
-                    names.add("봇"); names.add("bot");
-                    for (org.bukkit.entity.Player op : Bukkit.getOnlinePlayers()) names.add(op.getName());
-                    return filter(names, prefix);
+                case "rsp", "rps" -> {
+                    if (args.length==2){
+                        // 상대 지정 또는 choose 하위 명령
+                        List<String> names = new ArrayList<>();
+                        names.add("choose"); names.add("봇"); names.add("bot");
+                        for (org.bukkit.entity.Player op : Bukkit.getOnlinePlayers()) names.add(op.getName());
+                        return filter(names, args[1]);
+                    }
+                    if (args.length==3 && "choose".equalsIgnoreCase(args[1])){
+                        return filter(Arrays.asList("가위","바위","보","scissor","rock","paper"), args[2]);
+                    }
                 }
-                case "lottery" -> { return Arrays.asList("buy", "draw", "drawset"); }
+                case "coin","flip","dice","horse" -> { if (args.length==2) return Collections.singletonList("<베팅>"); }
+                case "lottery" -> { if (args.length==2) return Arrays.asList("buy", "draw", "drawset"); }
             }
         }
         if (args.length>=3 && args[0].equalsIgnoreCase("lottery")){
             String sub2 = args[1].toLowerCase();
             if (sub2.equals("drawset")){
-                // 숫자 힌트 표현
                 int need = plugin.getLotteryManager()!=null ? plugin.getLotteryManager().getPickCountSafe() : 6;
                 List<String> hint = new ArrayList<>();
                 for (int i=0;i<need;i++) hint.add("<n"+(i+1)+">");

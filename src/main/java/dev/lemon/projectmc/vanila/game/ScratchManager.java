@@ -34,11 +34,17 @@ public class ScratchManager implements Listener {
     private static final int REVEAL_ALL_SLOT = CONTROL_ROW_INDEX*9 + 3; // 48
     private static final int RETRY_SLOT = CONTROL_ROW_INDEX*9 + 4;       // 49
     private static final int EXIT_SLOT = CONTROL_ROW_INDEX*9 + 5;        // 50
+    private volatile boolean shuttingDown = false;
 
     public ScratchManager(casino plugin) {
         this.plugin = plugin;
         reload();
         Bukkit.getPluginManager().registerEvents(this, plugin);
+    }
+
+    public void shutdown(){
+        shuttingDown = true;
+        sessions.clear();
     }
 
     public void reload() {
@@ -283,6 +289,7 @@ public class ScratchManager implements Listener {
         if (!e.getView().getTitle().startsWith(ChatColor.GOLD + "즉석 복권")) return;
         Session s = sessions.get(p.getUniqueId());
         if (s == null) return;
+        if (shuttingDown) { sessions.remove(p.getUniqueId()); return; }
         if (!s.done && !s.transitioning)
             Bukkit.getScheduler().runTask(plugin, () -> p.openInventory(s.inv));
         else

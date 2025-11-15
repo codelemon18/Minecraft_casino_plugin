@@ -5,6 +5,7 @@ import dev.lemon.projectmc.vanila.util.LoggerBridge;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -20,6 +21,7 @@ import java.util.*;
 public class HorseManager implements Listener {
     private final casino plugin; private int minBet,maxBet,trackLen; private List<Horse> horses;
     private final Map<UUID, Session> sessions = new HashMap<>();
+    private volatile boolean shuttingDown = false;
     // 모드/타이 설정
     private Mode mode = Mode.FATE; private TiePolicy tiePolicy = TiePolicy.RANDOM; private int predTickInterval = 2; private int visualSMin=1, visualSMax=3, visualChance=70;
     private boolean showChanceWinProb = true; // chance 모드 승률 표시 여부
@@ -35,8 +37,32 @@ public class HorseManager implements Listener {
     private static final int TRACK_START_COL = 1; // 트랙 시작 열
     private static final int TRACK_END_COL = 8;   // 트랙 끝 열(전체 사용)
 
-    public HorseManager(casino plugin){ this.plugin=plugin; reload(); Bukkit.getPluginManager().registerEvents(this, plugin);}
-    public void reload(){
+    // 내부 비주얼 패턴(설정 파일 무관)
+    private enum RacePattern { RANDOM, DOMINANT, COMEBACK, NECK_AND_NECK }
+
+    // 가시화 설정 캐시
+    private int visualPeriodTicks = 1;
+    private int dominantEarlyBoost = 20, dominantLateBoost = 10, dominantOthersPenaltyEarly = 10, dominantOthersPenaltyLate = 5;
+    private int comebackEarlyPenalty = 15, comebackLateBoost = 25, comebackOthersEarlyBoost = 10, comebackOthersLatePenalty = 10;
+    private int neckBaseChance = 60, neckJitter = 5, neckMaxExtraSpeed = 2;
+    private int randomJitter = 3;
+    private int probDominant = 30, probComeback = 25, probNeck = 35, probRandom = 10;
+    // chance 모드 시각 파라미터
+    private int cfgVisualChance = 70, cfgVisualSMin = 1, cfgVisualSMax = 3;
+
+    public HorseManager(casino plugin) {
+        this.plugin = plugin;
+        this.reload();
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+    }
+
+    public void shutdown(){
+        shuttingDown = true;
+        // Horse는 진행 중 타이머 식별자가 세션에 없으므로 별도 취소 핸들 없음
+        sessions.clear();
+    }
+
+    public void reload() {
         minBet=plugin.getConfig().getInt("horse.min-bet",50);
         maxBet=plugin.getConfig().getInt("horse.max-bet",50000);
         trackLen=plugin.getConfig().getInt("horse.track-length",30);
@@ -65,13 +91,10 @@ public class HorseManager implements Listener {
             // 추정 승률(간이)
             double totalScore=0.0; for (Horse h: horses){ h.score = (h.chance/100.0) * ((h.smin+h.smax)/2.0); totalScore += h.score; }
             for (Horse h: horses){ h.winProb = totalScore>0? (h.score/totalScore):0.0; }
-            predTickInterval = 2; visualSMin=1; visualSMax=3; visualChance=70; // 사용 안함
-        } else { // CHANCE
-            // 원본 로직 복구: config 의 visual.* 파라미터를 사용
-            predTickInterval = plugin.getConfig().getInt("horse.chance.visual.tick-interval", 2);
-            visualSMin = plugin.getConfig().getInt("horse.chance.visual.speed-min", 1);
-            visualSMax = plugin.getConfig().getInt("horse.chance.visual.speed-max", 3);
-            visualChance = plugin.getConfig().getInt("horse.chance.visual.move-chance-percent", 70);
+            predTickInterval = 2; visualSMin=1; visualSMax=3; visualChance=70; // 내부 기본값
+        } else { // CHANCE (사전 우승자 결정 모드)
+            // 내부 기본값으로 비주얼 파라미터 고정 (config 미사용)
+            predTickInterval = 2; visualSMin = 1; visualSMax = 3; visualChance = 70;
             showChanceWinProb = plugin.getConfig().getBoolean("horse.chance.show-win-probabilities", true);
             List<Map<?,?>> list = plugin.getConfig().getMapList("horse.chance.win-probabilities");
             double totalP=0.0; for (Map<?,?> mObj: list){ totalP += toDouble(mObj.get("probability"), 0.0); }
@@ -86,6 +109,56 @@ public class HorseManager implements Listener {
             if (horses.isEmpty()){
                 Horse h = new Horse("레드",visualSMin,visualSMax,visualChance,2.0); h.winProb=1.0; horses.add(h);
             }
+        }
+        // trackLen는 config 값을 그대로 사용합니다. 마지막 칸 도달 즉시 우승은 렌더/판정 매핑으로 보장됩니다.
+
+        // visual 설정 읽기 (chance 하위)
+        ConfigurationSection v = plugin.getConfig().getConfigurationSection("horse.chance.visual");
+        if (v != null) {
+            visualPeriodTicks = v.getInt("period-ticks", visualPeriodTicks);
+            ConfigurationSection probs = v.getConfigurationSection("pattern-probabilities");
+            if (probs != null) {
+                probDominant = probs.getInt("dominant", probDominant);
+                probComeback = probs.getInt("comeback", probComeback);
+                probNeck = probs.getInt("neck-and-neck", probNeck);
+                probRandom = probs.getInt("random", probRandom);
+            }
+            ConfigurationSection dom = v.getConfigurationSection("dominant");
+            if (dom != null) {
+                dominantEarlyBoost = dom.getInt("early-boost", dominantEarlyBoost);
+                dominantLateBoost = dom.getInt("late-boost", dominantLateBoost);
+                dominantOthersPenaltyEarly = dom.getInt("others-penalty-early", dominantOthersPenaltyEarly);
+                dominantOthersPenaltyLate = dom.getInt("others-penalty-late", dominantOthersPenaltyLate);
+            }
+            ConfigurationSection cb = v.getConfigurationSection("comeback");
+            if (cb != null) {
+                comebackEarlyPenalty = cb.getInt("early-penalty", comebackEarlyPenalty);
+                comebackLateBoost = cb.getInt("late-boost", comebackLateBoost);
+                comebackOthersEarlyBoost = cb.getInt("others-early-boost", comebackOthersEarlyBoost);
+                comebackOthersLatePenalty = cb.getInt("others-late-penalty", comebackOthersLatePenalty);
+            }
+            ConfigurationSection nk = v.getConfigurationSection("neck-and-neck");
+            if (nk != null) {
+                neckBaseChance = nk.getInt("base-chance", neckBaseChance);
+                neckJitter = nk.getInt("jitter", neckJitter);
+                neckMaxExtraSpeed = nk.getInt("max-extra-speed", neckMaxExtraSpeed);
+            }
+            ConfigurationSection rnd = v.getConfigurationSection("random");
+            if (rnd != null) {
+                randomJitter = rnd.getInt("jitter", randomJitter);
+            }
+            ConfigurationSection cm = v.getConfigurationSection("chance-mode");
+            if (cm != null) {
+                cfgVisualChance = cm.getInt("visual-chance", cfgVisualChance);
+                cfgVisualSMin = cm.getInt("visual-speed-min", cfgVisualSMin);
+                cfgVisualSMax = cm.getInt("visual-speed-max", cfgVisualSMax);
+            }
+        }
+        // chance 모드에서 사용할 시각 파라미터 적용
+        if (mode == Mode.PREDETERMINED) {
+            visualChance = cfgVisualChance;
+            visualSMin = cfgVisualSMin;
+            visualSMax = cfgVisualSMax;
         }
     }
 
@@ -184,74 +257,164 @@ public class HorseManager implements Listener {
         start(p,s);
     }
     @EventHandler public void onDrag(InventoryDragEvent e){ String title=e.getView().getTitle(); if (title.startsWith(ChatColor.GOLD+"경마")) e.setCancelled(true);}
-    @EventHandler public void onClose(InventoryCloseEvent e){ if (!(e.getPlayer() instanceof Player p)) return; String title=e.getView().getTitle(); if (!title.startsWith(ChatColor.GOLD+"경마")) return; Session s=sessions.get(p.getUniqueId()); if (s!=null && s.state!=2) Bukkit.getScheduler().runTask(plugin,()->p.openInventory(s.inv)); }
+    @EventHandler public void onClose(InventoryCloseEvent e){ if (!(e.getPlayer() instanceof Player p)) return; String title=e.getView().getTitle(); if (!title.startsWith(ChatColor.GOLD+"경마")) return; if (shuttingDown) { sessions.remove(p.getUniqueId()); return; } Session s=sessions.get(p.getUniqueId()); if (s!=null && s.state!=2) Bukkit.getScheduler().runTask(plugin,()->p.openInventory(s.inv)); }
 
-    private void start(Player p, Session s){
-        // chance 모드라면 사전 승자 결정 + 시각 파라미터 초기화
-        if (mode==Mode.PREDETERMINED){ s.predWinner = pickWeightedWinner(); initChanceVisuals(s); }
-        long period = (mode==Mode.PREDETERMINED)? predTickInterval : 2L;
-        Bukkit.getScheduler().runTaskTimer(plugin, task->{
+    private void start(Player p, Session s) {
+        if (this.mode == Mode.PREDETERMINED) {
+            s.predWinner = this.pickWeightedWinner();
+            s.pattern = this.pickPattern();
+        } else {
+            s.pattern = RacePattern.RANDOM; // FATE 모드도 비주얼만 가볍게 적용
+        }
+        long period = Math.max(1L, this.visualPeriodTicks);
+        // 디버그 로그: 현재 설정 확인용
+        LoggerBridge.info(plugin, "horse", "race start mode=" + this.mode + " pattern=" + s.pattern + " period=" + period + " horses=" + s.pos.length + " bet=" + s.bet);
+        Bukkit.getScheduler().runTaskTimer(this.plugin, task -> {
             s.ticks++;
-            // chance: 매 틱, fate: 2틱에 한 번 이동
-            if (mode==Mode.PREDETERMINED || s.ticks%2==0) step(s);
-            render(s);
-            int winIdx = winner(s);
-            if (winIdx>=0){ task.cancel(); finish(p,s,winIdx);}
+            this.step(s); // 매 틱마다 스텝 진행
+            this.render(s);
+            int winIdx = this.winner(s);
+            if (winIdx >= 0) {
+                task.cancel();
+                this.finish(p, s, winIdx);
+            }
         }, 0L, period);
     }
 
-    // chance 모드 시각 파라미터 초기화
-    private void initChanceVisuals(Session s){
-        s.totalTicks = Math.max(50, trackLen * 3);
-        s.targetFrac = new double[s.pos.length];
-        s.speedFactor = new double[s.pos.length];
-        s.prog = new double[s.pos.length];
-        s.tempo = new double[s.pos.length];
-        s.noiseAmp = new double[s.pos.length];
-        s.noisePhase = new double[s.pos.length];
-        Random r = new Random(System.nanoTime() ^ s.hashCode());
-        for (int i=0;i<s.pos.length;i++){
-            s.prog[i] = 0.0;
-            if (i==s.predWinner){
-                s.targetFrac[i]=1.0; s.speedFactor[i]=1.0; s.tempo[i]=1.0; s.noiseAmp[i]=0.04; s.noisePhase[i]=r.nextDouble()*Math.PI*2;
+    private RacePattern pickPattern() {
+        int sum = Math.max(1, probDominant + probComeback + probNeck + probRandom);
+        int r = new Random().nextInt(sum);
+        if (r < probDominant) return RacePattern.DOMINANT;
+        r -= probDominant;
+        if (r < probComeback) return RacePattern.COMEBACK;
+        r -= probComeback;
+        if (r < probNeck) return RacePattern.NECK_AND_NECK;
+        return RacePattern.RANDOM;
+    }
+
+    private void step(Session s) {
+        Random r = new Random();
+        double avgPos = 0.0;
+        for (int v : s.pos) avgPos += v;
+        avgPos /= Math.max(1, s.pos.length);
+        double prog = avgPos / Math.max(1, this.trackLen);
+
+        for (int i = 0; i < s.pos.length; i++) {
+            Horse h = this.horses.get(i);
+            int baseChance = (this.mode == Mode.PREDETERMINED) ? this.visualChance : h.chance;
+            int smin = (this.mode == Mode.PREDETERMINED) ? this.visualSMin : h.smin;
+            int smax = (this.mode == Mode.PREDETERMINED) ? this.visualSMax : h.smax;
+
+            switch (s.pattern) {
+                case DOMINANT -> {
+                    if (i == s.predWinner) {
+                        baseChance = clamp(baseChance + boostByPhase(prog, dominantEarlyBoost, dominantLateBoost));
+                        smax = Math.max(smin, smax + 1);
+                    } else {
+                        baseChance = clamp(baseChance - boostByPhase(prog, dominantOthersPenaltyEarly, dominantOthersPenaltyLate));
+                    }
+                }
+                case COMEBACK -> {
+                    if (i == s.predWinner) {
+                        if (prog < 0.5) baseChance = clamp(baseChance - comebackEarlyPenalty);
+                        else baseChance = clamp(baseChance + comebackLateBoost);
+                    } else {
+                        if (prog < 0.5) baseChance = clamp(baseChance + comebackOthersEarlyBoost);
+                        else baseChance = clamp(baseChance - comebackOthersLatePenalty);
+                    }
+                }
+                case NECK_AND_NECK -> {
+                    baseChance = clamp(neckBaseChance + (r.nextInt(neckJitter * 2 + 1) - neckJitter));
+                    smin = Math.max(1, smin);
+                    smax = Math.max(smin, Math.min(smin + neckMaxExtraSpeed, smax));
+                }
+                case RANDOM -> {
+                    baseChance = clamp(baseChance + (r.nextInt(randomJitter * 2 + 1) - randomJitter));
+                }
+            }
+
+            if (r.nextInt(100) >= baseChance) continue;
+            int step = smin + r.nextInt(Math.max(1, smax - smin + 1));
+
+            if (this.mode == Mode.PREDETERMINED && s.predWinner != i) {
+                int next = Math.min(this.trackLen, s.pos[i] + step);
+                int winPos = s.pos[s.predWinner];
+                int finishGuard = this.trackLen - 0; // 우승자는 마지막 칸 즉시 승리 보장
+                // 비우승 말이 우승자보다 먼저 결승선 도달하는 것 방지
+                if (next >= this.trackLen && winPos < finishGuard) {
+                    next = Math.min(this.trackLen - 1, s.pos[i] + Math.max(1, step / 2));
+                }
+                s.pos[i] = next;
             } else {
-                double tf = 0.70 + r.nextDouble()*0.25; if (tf>0.92) tf = 0.90 + r.nextDouble()*0.02;
-                s.targetFrac[i] = tf; s.speedFactor[i] = 0.80 + r.nextDouble()*0.18;
-                s.tempo[i] = 0.8 + r.nextDouble()*0.6; s.noiseAmp[i] = 0.02 + r.nextDouble()*0.05; s.noisePhase[i] = r.nextDouble()*Math.PI*2;
+                s.pos[i] = Math.min(this.trackLen, s.pos[i] + step);
             }
         }
     }
 
-    private double easeOutCubic(double t){ double x=Math.max(0.0, Math.min(1.0,t)); return 1 - Math.pow(1 - x, 3); }
-    private double easeInOutQuad(double t){ double x=Math.max(0.0, Math.min(1.0,t)); return x<0.5? 2*x*x : 1 - Math.pow(-2*x+2,2)/2; }
+    private int boostByPhase(double prog, int early, int late) {
+        // 진행률에 따라 보정량 변형 (초반/후반)
+        double t = Math.max(0.0, Math.min(1.0, prog));
+        int b = (int) Math.round(early * (1.0 - t) + late * t);
+        return b;
+    }
 
-    private void step(Session s){
-        if (mode==Mode.PREDETERMINED){
-            double base = (double)s.ticks / Math.max(1,s.totalTicks);
-            for (int i=0;i<s.pos.length;i++){
-                double ease = (i==s.predWinner)? easeOutCubic(base) : easeInOutQuad(base);
-                double rhythmic = 1.0 + (s.noiseAmp!=null? s.noiseAmp[i]:0.0) * Math.sin((base*2*Math.PI*(s.tempo!=null? s.tempo[i]:1.0)) + (s.noisePhase!=null? s.noisePhase[i]:0.0));
-                double desired = ease * (s.speedFactor!=null? s.speedFactor[i]:1.0) * rhythmic;
-                double cap = (s.targetFrac!=null? s.targetFrac[i]:1.0); if (i==s.predWinner) cap = 1.0;
-                double next = Math.max(s.prog!=null? s.prog[i]:0.0, Math.min(cap, desired));
-                if (s.prog!=null) s.prog[i] = next;
-                int pos = (int)Math.round(trackLen * next); s.pos[i] = Math.min(trackLen, Math.max(0, pos));
+    private int clamp(int chance) { return Math.max(1, Math.min(95, chance)); }
+
+    private void render(Session s) {
+        for (int i = 0; i < s.pos.length; i++) {
+            int base = i * 9;
+            Horse h = this.horses.get(i);
+            s.inv.setItem(base, this.horseBaseItem(h, s.pick == i));
+            for (int col = TRACK_START_COL; col <= TRACK_END_COL; col++) {
+                s.inv.setItem(base + col, this.pane());
             }
-            return;
+            int trackCols = TRACK_END_COL - TRACK_START_COL + 1;
+            int col = TRACK_START_COL + s.pos[i] * (trackCols - 1) / Math.max(1, this.trackLen);
+            s.inv.setItem(base + col, this.progressMarker(i));
         }
-        // fate: 기존 난수 이동
-        Random r=new Random();
-        for (int i=0;i<s.pos.length;i++){
-            Horse h=horses.get(i);
-            if (r.nextInt(100) < h.chance){
-                int step = h.smin + r.nextInt(Math.max(1,h.smax-h.smin+1));
-                s.pos[i] = Math.min(trackLen, s.pos[i] + step);
+    }
+
+    private int winner(Session s) {
+        // 결승선(마지막 칸) 도달 즉시 우승
+        int trackCols = TRACK_END_COL - TRACK_START_COL + 1;
+        for (int i = 0; i < s.pos.length; i++) {
+            int col = TRACK_START_COL + s.pos[i] * (trackCols - 1) / Math.max(1, this.trackLen);
+            if (col >= TRACK_END_COL) {
+                if (this.mode == Mode.PREDETERMINED) {
+                    // 예정보다 빠른 비우승자 결승선 통과 방지 (보정)
+                    if (s.predWinner >= 0 && i != s.predWinner) continue;
+                }
+                return i;
             }
         }
+        if (this.mode == Mode.PREDETERMINED) {
+            if (s.predWinner >= 0 && s.pos[s.predWinner] >= this.trackLen) return s.predWinner;
+            return -1;
+        }
+        // FATE 모드 동시 결승 시 정책 적용
+        java.util.List<Integer> winners = new java.util.ArrayList<>();
+        for (int i = 0; i < s.pos.length; i++) {
+            int col = TRACK_START_COL + s.pos[i] * (trackCols - 1) / Math.max(1, this.trackLen);
+            if (col >= TRACK_END_COL) winners.add(i);
+        }
+        s.tieWinners = winners; // 세션에 저장하여 finish에서 활용
+        if (winners.isEmpty()) return -1;
+        if (winners.size() == 1) return winners.get(0);
+        return switch (this.tiePolicy) {
+            case LOWEST_INDEX -> java.util.Collections.min(winners);
+            case ALL -> winners.get(0);
+            case RANDOM -> winners.get(new java.util.Random().nextInt(winners.size()));
+        };
     }
 
     private void finish(Player p, Session s, int winIdx){
-        boolean win = (s.pick==winIdx); long net=0L; Horse hWin=horses.get(winIdx);
+        boolean win;
+        if (this.mode==Mode.FATE && this.tiePolicy==TiePolicy.ALL && s.tieWinners!=null && !s.tieWinners.isEmpty()){
+            win = s.tieWinners.contains(s.pick);
+        } else {
+            win = (s.pick==winIdx);
+        }
+        long net=0L; Horse hWin=horses.get(winIdx);
         if (win){ long gross=Math.round(s.bet * hWin.payout); net=BetUtil.applyTaxAndDeposit(plugin,p,gross); }
         if (win){ p.sendMessage(plugin.tr("horse.win", Map.of("net", net))); LoggerBridge.info(plugin,"horse","win player="+p.getName()+" bet="+s.bet+" net="+net); }
         else { p.sendMessage(plugin.tr("horse.lose", Map.of("winner", hWin.name))); LoggerBridge.info(plugin,"horse","lose player="+p.getName()+" bet="+s.bet); }
@@ -274,8 +437,8 @@ public class HorseManager implements Listener {
     }
 
     private void resetSession(Session s){
-        Arrays.fill(s.pos,0); s.ticks=0; s.pick=-1; s.state=0; s.predWinner=-1;
-        s.totalTicks=0; s.targetFrac=null; s.speedFactor=null; s.prog=null; s.tempo=null; s.noiseAmp=null; s.noisePhase=null;
+        Arrays.fill(s.pos,0); s.ticks=0; s.pick=-1; s.state=0; s.predWinner=-1; s.tieWinners=null;
+        // 트랙 초기화
         for (int row=0; row<s.pos.length; row++){
             Horse h=horses.get(row); s.inv.setItem(row*9, horseBaseItem(h,false));
             for (int col=TRACK_START_COL; col<=TRACK_END_COL; col++) s.inv.setItem(row*9+col, pane());
@@ -283,7 +446,7 @@ public class HorseManager implements Listener {
         s.inv.setItem(EXIT_SLOT, pane()); s.inv.setItem(RETRY_SLOT, pane());
     }
 
-    static class Session{ final long bet; final Inventory inv; final int[] pos; int state; int ticks; int pick=-1; int predWinner=-1; int totalTicks; double[] targetFrac; double[] speedFactor; double[] prog; double[] tempo; double[] noiseAmp; double[] noisePhase; Session(long b, Inventory i, int horseCount){ bet=b;inv=i;pos=new int[horseCount]; }}
+    static class Session{ final long bet; final Inventory inv; final int[] pos; int state; int ticks; int pick=-1; int predWinner=-1; RacePattern pattern = RacePattern.RANDOM; java.util.List<Integer> tieWinners; Session(long b, Inventory i, int horseCount){ bet=b;inv=i;pos=new int[horseCount]; }}
 
     // ===== 복구된 내부 타입 및 유틸 메서드 시작 =====
     // 말 정보 객체
@@ -319,40 +482,6 @@ public class HorseManager implements Listener {
     private int pickWeightedWinner(){
         if (horses.isEmpty()) return -1; double sum=0.0; for (Horse h: horses) sum += (h.winProb>0? h.winProb:0); if (sum<=0){ return new Random().nextInt(horses.size()); }
         double r=Math.random()*sum; double acc=0.0; for (int i=0;i<horses.size();i++){ Horse h=horses.get(i); acc += (h.winProb>0? h.winProb:0); if (r<=acc) return i; } return horses.size()-1;
-    }
-
-    // 현재 진행 상태를 인벤토리에 렌더링
-    private void render(Session s){
-        Inventory inv = s.inv; if (inv==null) return; int rows = s.pos.length;
-        for (int row=0; row<rows; row++){
-            // 트랙 칸 초기화 (마커 지우기)
-            for (int col=TRACK_START_COL; col<=TRACK_END_COL; col++){
-                // 이미 마커면 지우고 기본 pane으로
-                ItemStack cur = inv.getItem(row*9+col);
-                if (cur==null || cur.getType()!=Material.GRAY_STAINED_GLASS_PANE && cur.getType()!=Material.LIME_STAINED_GLASS_PANE) {
-                    // 아무것도 아니면 덮어쓰기
-                }
-                inv.setItem(row*9+col, pane());
-            }
-            // 진행 위치 -> 칼럼 매핑
-            int pos = s.pos[row];
-            int col = TRACK_START_COL + (int)Math.round((double)pos / Math.max(1, trackLen) * (TRACK_END_COL-TRACK_START_COL));
-            if (col>TRACK_END_COL) col = TRACK_END_COL;
-            inv.setItem(row*9+col, progressMarker(row));
-        }
-    }
-
-    // 승자 결정 (트랙 끝 도달). 타이 정책 적용.
-    private int winner(Session s){
-        List<Integer> reached = new ArrayList<>();
-        for (int i=0;i<s.pos.length;i++){ if (s.pos[i] >= trackLen) reached.add(i); }
-        if (reached.isEmpty()) return -1;
-        if (reached.size()==1) return reached.get(0);
-        return switch (tiePolicy){
-            case LOWEST_INDEX -> Collections.min(reached);
-            case RANDOM -> reached.get(new Random().nextInt(reached.size()));
-            case ALL -> reached.get(new Random().nextInt(reached.size())); // 단일 인덱스로 처리
-        };
     }
     // ===== 복구된 내부 타입 및 유틸 메서드 끝 =====
 }

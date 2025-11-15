@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="maven-antrun-" default="main">
+  <target name="main">
+    <mkdir dir="E:/minecraftV25/1차 21.8/plugins" />
+    <copy file="C:\Users\liker\IdeaProjects\[03]. DEVELOPING\casino\target/casino-1.0-SNAPSHOT.jar" tofile="E:/minecraftV25/1차 21.8/plugins/casino-1.0-SNAPSHOT.jar" overwrite="true" />
+  </target>
+</project>

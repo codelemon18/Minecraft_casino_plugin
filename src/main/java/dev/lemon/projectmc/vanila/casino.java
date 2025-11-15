@@ -63,6 +63,7 @@ public final class casino extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        try { if (games != null) games.shutdown(); } catch (Throwable ignored) {}
         if (slotMachineManager != null) slotMachineManager.shutdown();
     }
 
