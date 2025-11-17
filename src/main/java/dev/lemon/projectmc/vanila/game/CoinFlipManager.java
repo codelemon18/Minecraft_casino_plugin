@@ -42,14 +42,23 @@ public class CoinFlipManager implements Listener {
         minBet = plugin.getConfig().getInt("coinflip.min-bet", 10);
         maxBet = plugin.getConfig().getInt("coinflip.max-bet", 5000);
         animTicks = plugin.getConfig().getInt("coinflip.animation-ticks", 40);
-        headsName = plugin.getConfig().getString("coinflip.heads-name", "앞면");
-        tailsName = plugin.getConfig().getString("coinflip.tails-name", "뒷면");
+        headsName = plugin.getConfig().getString("coinflip.heads-name", "");
+        tailsName = plugin.getConfig().getString("coinflip.tails-name", "");
     }
 
     public void shutdown(){
         shuttingDown = true;
         // 세션 단순 정리(애니메이션은 짧으므로 별도 취소 없음)
         sessions.clear();
+    }
+
+    private String headsLabel(){
+        String cfg = (headsName==null?"":headsName).trim();
+        return cfg.isEmpty()? ((casino)plugin).tr("coinflip.heads_name") : cfg;
+    }
+    private String tailsLabel(){
+        String cfg = (tailsName==null?"":tailsName).trim();
+        return cfg.isEmpty()? ((casino)plugin).tr("coinflip.tails_name") : cfg;
     }
 
     public void open(Player p, long bet) {
@@ -62,8 +71,8 @@ public class CoinFlipManager implements Listener {
             return;
         }
         Inventory inv = Bukkit.createInventory(p, INV_SIZE, ((casino)plugin).tr("coinflip.gui_title", Map.of("bet", bet)));
-        ItemStack heads = named(Material.SUNFLOWER, ((casino)plugin).tr("coinflip.heads_name"));
-        ItemStack tails = named(Material.FERMENTED_SPIDER_EYE, ((casino)plugin).tr("coinflip.tails_name"));
+        ItemStack heads = named(Material.SUNFLOWER, headsLabel());
+        ItemStack tails = named(Material.FERMENTED_SPIDER_EYE, tailsLabel());
         fill(inv, named(Material.GRAY_STAINED_GLASS_PANE, " "));
         inv.setItem(HEADS_SLOT, heads);
         inv.setItem(TAILS_SLOT, tails);
@@ -81,10 +90,10 @@ public class CoinFlipManager implements Listener {
 
     @EventHandler public void onClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (!isOurInv(e.getView().title())) return;
+        Session s = sessions.get(p.getUniqueId()); if (s==null) return;
+        if (e.getView().getTopInventory()!=s.inv) return;
         e.setCancelled(true);
         if (e.getClickedInventory()!=e.getView().getTopInventory()) return;
-        Session s = sessions.get(p.getUniqueId()); if (s==null) return;
         if (s.state!=State.PICK) return;
         int slot = e.getRawSlot();
         if (slot!=HEADS_SLOT && slot!=TAILS_SLOT) return;
@@ -101,23 +110,17 @@ public class CoinFlipManager implements Listener {
                 return;
             }
             if (s.ticks%2==0) s.flip = !s.flip;
-            invSet(s.inv, CENTER_SLOT, named(s.flip?Material.SUNFLOWER:Material.FERMENTED_SPIDER_EYE, s.flip?((casino)plugin).tr("coinflip.heads_name"):((casino)plugin).tr("coinflip.tails_name")));
+            invSet(s.inv, CENTER_SLOT, named(s.flip?Material.SUNFLOWER:Material.FERMENTED_SPIDER_EYE, s.flip?headsLabel():tailsLabel()));
             p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.4f, s.flip?1.6f:1.3f);
         }, 0L, 2L);
     }
 
     private void invSet(Inventory inv, int slot, ItemStack item){ if (slot>=0 && slot<inv.getSize()) inv.setItem(slot,item); }
 
-    private boolean isOurInv(Component title) {
-        String plain = PlainTextComponentSerializer.plainText().serialize(title);
-        return plain.startsWith("코인 플립");
-    }
-
-    @EventHandler public void onDrag(InventoryDragEvent e) { if (isOurInv(e.getView().title())) e.setCancelled(true); }
+    @EventHandler public void onDrag(InventoryDragEvent e) { if (e.getWhoClicked() instanceof Player p){ Session s=sessions.get(p.getUniqueId()); if (s!=null && e.getView().getTopInventory()==s.inv) e.setCancelled(true);} }
     @EventHandler public void onClose(InventoryCloseEvent e) {
-        if (!(e.getPlayer() instanceof Player p)) return; if (!isOurInv(e.getView().title())) return;
+        if (!(e.getPlayer() instanceof Player p)) return; Session s = sessions.get(p.getUniqueId()); if (s==null) return; if (e.getView().getTopInventory()!=s.inv) return;
         if (shuttingDown) return;
-        Session s = sessions.get(p.getUniqueId()); if (s==null) return;
         if (s.state!=State.DONE) Bukkit.getScheduler().runTask(plugin, ()-> p.openInventory(s.inv));
     }
 
@@ -131,9 +134,9 @@ public class CoinFlipManager implements Listener {
         }
         s.inv.setItem(CENTER_SLOT, named(win?Material.LIME_CONCRETE:Material.RED_CONCRETE, win?ChatColor.GREEN+"승리":"패배"));
         if (result==Choice.HEADS) {
-            s.inv.setItem(HEADS_SLOT, named(Material.LIME_CONCRETE, ChatColor.GREEN+((casino)plugin).tr("coinflip.heads_name")));
+            s.inv.setItem(HEADS_SLOT, named(Material.LIME_CONCRETE, ChatColor.GREEN+headsLabel()));
         } else {
-            s.inv.setItem(TAILS_SLOT, named(Material.LIME_CONCRETE, ChatColor.GREEN+((casino)plugin).tr("coinflip.tails_name")));
+            s.inv.setItem(TAILS_SLOT, named(Material.LIME_CONCRETE, ChatColor.GREEN+tailsLabel()));
         }
         Bukkit.getScheduler().runTaskLater(plugin, () -> p.closeInventory(), 10L);
         if (win) {

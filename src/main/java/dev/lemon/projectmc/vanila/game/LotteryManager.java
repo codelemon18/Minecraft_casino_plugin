@@ -82,27 +82,27 @@ public class LotteryManager {
             if (!p.hasPermission("casino.admin")){ p.sendMessage(plugin.tr("common.no_permission")); return; }
             int need = pickCount;
             if (args.length < 2 + need){
-                p.sendMessage(ChatColor.RED+"사용법: /casino lottery drawset "+need+"개 숫자" + (bonusEnabled? " [보너스]":""));
+                p.sendMessage(plugin.tr("lottery.drawset_usage", Map.of("need", need, "bonus", bonusEnabled? plugin.tr("lottery.drawset_usage_bonus_suffix"): "")));
                 return;
             }
             Set<Integer> set = new HashSet<>(); int[] win = new int[need];
             try{
                 for (int i=0;i<need;i++){
                     int v = Integer.parseInt(args[2+i]);
-                    if (v<1 || v>numberMax) { p.sendMessage(ChatColor.RED+"범위 1.."+numberMax+" 벗어남: "+v); return; }
-                    if (!set.add(v)) { p.sendMessage(ChatColor.RED+"중복 숫자: "+v); return; }
+                    if (v<1 || v>numberMax) { p.sendMessage(plugin.tr("lottery.range_error", Map.of("max", numberMax, "value", v))); return; }
+                    if (!set.add(v)) { p.sendMessage(plugin.tr("lottery.duplicate_error", Map.of("value", v))); return; }
                     win[i]=v;
                 }
-            }catch(Exception ex){ p.sendMessage(ChatColor.RED+"숫자 파싱 실패"); return; }
+            }catch(Exception ex){ p.sendMessage(plugin.tr("lottery.parse_error")); return; }
             Arrays.sort(win);
             int bonus = -1;
             if (bonusEnabled){
                 if (args.length >= 2 + need + 1){
                     try{
                         bonus = Integer.parseInt(args[2+need]);
-                        if (bonus<1 || bonus>numberMax) { p.sendMessage(ChatColor.RED+"보너스 범위 1.."+numberMax+" 벗어남: "+bonus); return; }
-                        for (int w: win) if (w==bonus){ p.sendMessage(ChatColor.RED+"보너스가 당첨번호와 중복됩니다"); return; }
-                    }catch(Exception ex){ p.sendMessage(ChatColor.RED+"보너스 숫자 파싱 실패"); return; }
+                        if (bonus<1 || bonus>numberMax) { p.sendMessage(plugin.tr("lottery.bonus_range_error", Map.of("max", numberMax, "value", bonus))); return; }
+                        for (int w: win) if (w==bonus){ p.sendMessage(plugin.tr("lottery.bonus_duplicate_error")); return; }
+                    }catch(Exception ex){ p.sendMessage(plugin.tr("lottery.bonus_parse_error")); return; }
                 } else {
                     bonus = rollBonusNotIn(win);
                 }

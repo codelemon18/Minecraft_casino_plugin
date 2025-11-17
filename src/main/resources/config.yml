@@ -99,6 +99,7 @@ lottery:
   pool: 10000000
   number-range-max: 38
   pick-count: 6
+  bonus-enabled: true
   rollover-unpaid: true
   max-tickets-per-player: 100
   tiers:

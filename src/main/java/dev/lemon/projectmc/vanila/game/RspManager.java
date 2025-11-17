@@ -57,11 +57,11 @@ public class RspManager implements Listener {
 
         // /casino rsp choose <hand>
         if (args.length >= 2 && "choose".equalsIgnoreCase(args[1])) {
-            if (args.length < 3) { sender.sendMessage(ChatColor.RED+"[RSP] 사용법: /casino rsp choose <가위|바위|보>"); return; }
+            if (args.length < 3) { sender.sendMessage(plugin.tr("rsp.usage_choose")); return; }
             Game g = activeGames.get(sender.getUniqueId());
-            if (g==null) { sender.sendMessage(ChatColor.RED+"[RSP] 진행 중인 게임이 없습니다."); return; }
+            if (g==null) { sender.sendMessage(plugin.tr("rsp.no_game")); return; }
             Hand hand = parseHand(args[2]);
-            if (hand == null) { sender.sendMessage(ChatColor.RED+"[RSP] 잘못된 손 모양 입력"); return; }
+            if (hand == null) { sender.sendMessage(plugin.tr("rsp.invalid_hand")); return; }
             applyHandChoice(sender, g, hand);
             return;
         }
@@ -71,7 +71,7 @@ public class RspManager implements Listener {
         String targetName = args[1];
         long bet = parseLong(args[2], -1);
         if (bet < minBet || bet > maxBet) {
-            sender.sendMessage(ChatColor.RED+"[RSP] 베팅 범위("+minBet+"~"+maxBet+")");
+            sender.sendMessage(plugin.tr("rsp.bet_range", Map.of("min", minBet, "max", maxBet)));
             return;
         }
 
@@ -79,28 +79,28 @@ public class RspManager implements Listener {
         if (args.length >= 4) {
             String action = args[3].toLowerCase();
             Player challenger = Bukkit.getPlayerExact(targetName);
-            if (challenger == null) { sender.sendMessage(ChatColor.RED+"[RSP] 보낸 플레이어 오프라인"); return; }
+            if (challenger == null) { sender.sendMessage(plugin.tr("rsp.offline_sender")); return; }
             Challenge ch = pendingChallenges.get(sender.getUniqueId());
             if (ch == null || ch.sender != challenger.getUniqueId() || ch.bet != bet) {
-                sender.sendMessage(ChatColor.RED+"[RSP] 해당 도전을 찾을 수 없습니다.");
+                sender.sendMessage(plugin.tr("rsp.challenge_not_found"));
                 return;
             }
             if ("deny".equals(action)) {
                 pendingChallenges.remove(sender.getUniqueId());
                 // challenger 환불
                 BetUtil.depositRaw(plugin, challenger, ch.bet);
-                sender.sendMessage(ChatColor.GRAY+"[RSP] 도전 거절. 환불 완료");
-                challenger.sendMessage(ChatColor.RED+"[RSP] 상대가 도전을 거절했습니다. 베팅 반환");
+                sender.sendMessage(ChatColor.GRAY+plugin.tr("rsp.deny_ok_sender"));
+                challenger.sendMessage(plugin.tr("rsp.deny_refund_sender"));
                 return;
             } else if ("accept".equals(action)) {
                 // 이미 게임 중인지 체크
                 if (isInGame(challenger) || isInGame(sender)) {
-                    sender.sendMessage(ChatColor.RED+"[RSP] 한쪽이 이미 다른 게임 중입니다.");
+                    sender.sendMessage(plugin.tr("rsp.deny_self_in_game"));
                     return;
                 }
                 // 수락자 베팅 인출
                 if (!BetUtil.withdraw(plugin, sender, bet)) {
-                    sender.sendMessage(ChatColor.RED+"[RSP] 잔액 부족. 수락 실패");
+                    sender.sendMessage(plugin.tr("rsp.accept_withdraw_fail"));
                     BetUtil.depositRaw(plugin, challenger, ch.bet); // 챌린저 환불
                     pendingChallenges.remove(sender.getUniqueId());
                     return;
@@ -109,29 +109,29 @@ public class RspManager implements Listener {
                 startGamePvP(challenger, sender, bet);
                 return;
             } else {
-                sender.sendMessage(ChatColor.RED+"[RSP] 사용법: /casino rsp <challenger> <bet> accept|deny");
+                sender.sendMessage(plugin.tr("rsp.usage_acceptdeny"));
                 return;
             }
         }
 
         // 새로운 도전 생성 (/casino rsp <target|봇> <bet>)
-        if (isInGame(sender)) { sender.sendMessage(ChatColor.RED+"[RSP] 이미 게임 중입니다."); return; }
-        if (hasPendingOutgoing(sender)) { sender.sendMessage(ChatColor.RED+"[RSP] 이미 보낸 도전이 처리 대기 중입니다."); return; }
+        if (isInGame(sender)) { sender.sendMessage(plugin.tr("rsp.already_in_game")); return; }
+        if (hasPendingOutgoing(sender)) { sender.sendMessage(plugin.tr("rsp.already_pending")); return; }
 
         // 봇 모드
         if ("봇".equalsIgnoreCase(targetName) || "bot".equalsIgnoreCase(targetName)) {
-            if (!BetUtil.withdraw(plugin, sender, bet)) { sender.sendMessage(ChatColor.RED+"[RSP] 잔액 부족"); return; }
+            if (!BetUtil.withdraw(plugin, sender, bet)) { sender.sendMessage(plugin.tr("rsp.insufficient")); return; }
             startGameBot(sender, bet); return;
         }
 
         Player target = Bukkit.getPlayerExact(targetName);
-        if (target == null || !target.isOnline()) { sender.sendMessage(ChatColor.RED+"[RSP] 대상 오프라인"); return; }
-        if (sender.getUniqueId().equals(target.getUniqueId())) { sender.sendMessage(ChatColor.RED+"[RSP] 자기 자신에게 도전할 수 없습니다."); return; }
+        if (target == null || !target.isOnline()) { sender.sendMessage(plugin.tr("rsp.target_offline")); return; }
+        if (sender.getUniqueId().equals(target.getUniqueId())) { sender.sendMessage(plugin.tr("rsp.cannot_challenge_self")); return; }
 
-        if (!BetUtil.withdraw(plugin, sender, bet)) { sender.sendMessage(ChatColor.RED+"[RSP] 잔액 부족"); return; }
+        if (!BetUtil.withdraw(plugin, sender, bet)) { sender.sendMessage(plugin.tr("rsp.insufficient")); return; }
         Challenge challenge = new Challenge(sender.getUniqueId(), target.getUniqueId(), bet, System.currentTimeMillis());
         pendingChallenges.put(target.getUniqueId(), challenge);
-        sender.sendMessage(ChatColor.YELLOW+"[RSP] "+target.getName()+"에게 도전 전송. "+timeoutSec+"초 유효");
+        sender.sendMessage(plugin.tr("rsp.challenge_sent", Map.of("target", target.getName(), "timeout", timeoutSec)));
         // 텍스트 + 클릭 버튼 동시 제공
         sendChallengePrompt(target, sender.getName(), bet);
         // 타임아웃 스케줄
@@ -140,8 +140,8 @@ public class RspManager implements Listener {
             if (c != null && c.sender == sender.getUniqueId()) {
                 pendingChallenges.remove(target.getUniqueId());
                 BetUtil.depositRaw(plugin, sender, bet);
-                sender.sendMessage(ChatColor.GRAY+"[RSP] 도전 시간 초과. 환불 완료");
-                target.sendMessage(ChatColor.GRAY+"[RSP] 도전 시간 초과");
+                sender.sendMessage(ChatColor.GRAY+plugin.tr("rsp.timeout_both_refund"));
+                target.sendMessage(ChatColor.GRAY+plugin.tr("rsp.timeout_both_refund"));
             }
         }, timeoutSec * 20L);
     }
@@ -149,7 +149,7 @@ public class RspManager implements Listener {
     private void startGameBot(Player player, long bet) {
         Game g = new Game(GameType.BOT, bet, player.getUniqueId(), null);
         activeGames.put(player.getUniqueId(), g);
-        player.sendMessage(ChatColor.GRAY+"[RSP] 봇 대결 시작. '/casino rsp choose <가위|바위|보>'로 선택");
+        player.sendMessage(plugin.tr("rsp.bot_start"));
         sendChoosePrompt(player);
         player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.1f);
         scheduleGameTimeout(g);
@@ -159,8 +159,8 @@ public class RspManager implements Listener {
         Game g = new Game(GameType.PVP, bet, a.getUniqueId(), b.getUniqueId());
         activeGames.put(a.getUniqueId(), g);
         activeGames.put(b.getUniqueId(), g);
-        a.sendMessage(ChatColor.GOLD+"[RSP] 대결 시작! '/casino rsp choose <가위|바위|보>'로 선택");
-        b.sendMessage(ChatColor.GOLD+"[RSP] 대결 시작! '/casino rsp choose <가위|바위|보>'로 선택");
+        a.sendMessage(plugin.tr("rsp.pvp_start"));
+        b.sendMessage(plugin.tr("rsp.pvp_start"));
         sendChoosePrompt(a);
         sendChoosePrompt(b);
         a.playSound(a.getLocation(), Sound.UI_BUTTON_CLICK, 1f, 1.05f);
@@ -179,11 +179,11 @@ public class RspManager implements Listener {
         if (g.finished) return;
         UUID id = p.getUniqueId();
         if (g.choices.containsKey(id)) {
-            p.sendMessage(ChatColor.GRAY+"[RSP] 이미 선택했습니다.");
+            p.sendMessage(plugin.tr("rsp.already_chosen"));
             return;
         }
         g.choices.put(id, hand);
-        p.sendMessage(ChatColor.YELLOW+"[RSP] 선택 완료: "+displayHand(hand));
+        p.sendMessage(plugin.tr("rsp.choose_done", Map.of("hand", displayHand(hand))));
         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
         if (g.type == GameType.BOT) {
             // 봇 대결은 플레이어가 선택하면 즉시 판정
@@ -201,14 +201,14 @@ public class RspManager implements Listener {
         int result = judge(playerHand, botHand);
         if (result == 0) { // draw → 환불
             BetUtil.depositRaw(plugin, player, g.bet);
-            player.sendMessage(ChatColor.GRAY+"[RSP] 비김! 베팅 환불");
+            player.sendMessage(plugin.tr("rsp.draw_refund"));
             plugin.getLogger().info("[rsp] draw bot player="+player.getName()+" bet="+g.bet);
         } else if (result > 0) {
             long net = BetUtil.applyTaxAndDeposit(plugin, player, g.bet*2);
-            player.sendMessage(ChatColor.GREEN+"[RSP] 승리! 세후 ₩"+fmt(net));
+            player.sendMessage(plugin.tr("rsp.win_net", Map.of("net", fmt(net))));
             plugin.getLogger().info("[rsp] win bot player="+player.getName()+" bet="+g.bet+" net="+net);
         } else {
-            player.sendMessage(ChatColor.RED+"[RSP] 패배!");
+            player.sendMessage(plugin.tr("rsp.lose"));
             plugin.getLogger().info("[rsp] lose bot player="+player.getName()+" bet="+g.bet);
         }
         endGame(g);
@@ -225,15 +225,15 @@ public class RspManager implements Listener {
         if (result == 0) {
             BetUtil.depositRaw(plugin, a, g.bet);
             BetUtil.depositRaw(plugin, b, g.bet);
-            a.sendMessage(ChatColor.GRAY+"[RSP] 비김! 환불");
-            b.sendMessage(ChatColor.GRAY+"[RSP] 비김! 환불");
+            a.sendMessage(plugin.tr("rsp.draw_refund"));
+            b.sendMessage(plugin.tr("rsp.draw_refund"));
             plugin.getLogger().info("[rsp] draw pvp a="+a.getName()+" b="+b.getName()+" bet="+g.bet);
         } else {
             Player winner = (result>0)?a:b;
             Player loser = (winner==a)?b:a;
             long net = BetUtil.applyTaxAndDeposit(plugin, winner, g.bet*2);
-            winner.sendMessage(ChatColor.GREEN+"[RSP] 승리! 세후 ₩"+fmt(net));
-            loser.sendMessage(ChatColor.RED+"[RSP] 패배!");
+            winner.sendMessage(plugin.tr("rsp.win_net", Map.of("net", fmt(net))));
+            loser.sendMessage(plugin.tr("rsp.lose"));
             plugin.getLogger().info("[rsp] pvp result winner="+winner.getName()+" loser="+loser.getName()+" bet="+g.bet+" net="+net);
         }
         endGame(g);
@@ -244,7 +244,7 @@ public class RspManager implements Listener {
         if (g.type == GameType.BOT) {
             Player player = Bukkit.getPlayer(g.p1);
             if (player != null) {
-                player.sendMessage(ChatColor.RED+"[RSP] 시간 초과. 베팅 환불");
+                player.sendMessage(plugin.tr("rsp.timeout_refund"));
                 BetUtil.depositRaw(plugin, player, g.bet);
             }
             plugin.getLogger().info("[rsp] timeout bot player="+(player!=null?player.getName():"null")+" bet="+g.bet);
@@ -257,8 +257,8 @@ public class RspManager implements Listener {
         if (size == 0) { // 모두 미선택 → 환불
             if (a!=null) BetUtil.depositRaw(plugin,a,g.bet);
             if (b!=null) BetUtil.depositRaw(plugin,b,g.bet);
-            if (a!=null) a.sendMessage(ChatColor.GRAY+"[RSP] 시간 초과 환불");
-            if (b!=null) b.sendMessage(ChatColor.GRAY+"[RSP] 시간 초과 환불");
+            if (a!=null) a.sendMessage(plugin.tr("rsp.timeout_both_refund"));
+            if (b!=null) b.sendMessage(plugin.tr("rsp.timeout_both_refund"));
             plugin.getLogger().info("[rsp] timeout pvp both no choose bet="+g.bet);
         } else if (size == 1) { // 한쪽만 선택 → 선택한 쪽 승리
             UUID winnerId = g.choices.keySet().iterator().next();
@@ -266,9 +266,9 @@ public class RspManager implements Listener {
             Player loser = (winnerId.equals(g.p1)?b:a);
             if (winner!=null) {
                 long net = BetUtil.applyTaxAndDeposit(plugin, winner, g.bet*2);
-                winner.sendMessage(ChatColor.GREEN+"[RSP] 상대 미선택 승리! 세후 ₩"+fmt(net));
+                winner.sendMessage(plugin.tr("rsp.timeout_partial_win", Map.of("net", fmt(net))));
             }
-            if (loser!=null) loser.sendMessage(ChatColor.RED+"[RSP] 시간 초과 패배");
+            if (loser!=null) loser.sendMessage(plugin.tr("rsp.timeout_partial_lose"));
             plugin.getLogger().info("[rsp] timeout pvp partial winner="+(winner!=null?winner.getName():"null")+" bet="+g.bet);
         }
         endGame(g);
@@ -281,11 +281,11 @@ public class RspManager implements Listener {
         if (remaining != null) {
             if (g.choices.containsKey(remaining.getUniqueId())) {
                 long net = BetUtil.applyTaxAndDeposit(plugin, remaining, g.bet*2);
-                remaining.sendMessage(ChatColor.GREEN+"[RSP] 상대 접속 종료로 승리! 세후 ₩"+fmt(net));
+                remaining.sendMessage(plugin.tr("rsp.disconnect_win", Map.of("net", fmt(net))));
                 plugin.getLogger().info("[rsp] disconnect win player="+remaining.getName()+" bet="+g.bet);
             } else {
                 BetUtil.depositRaw(plugin, remaining, g.bet);
-                remaining.sendMessage(ChatColor.GRAY+"[RSP] 상대 접속 종료. 환불");
+                remaining.sendMessage(plugin.tr("rsp.disconnect_refund"));
                 plugin.getLogger().info("[rsp] disconnect refund player="+remaining.getName()+" bet="+g.bet);
             }
         }
@@ -338,7 +338,7 @@ public class RspManager implements Listener {
             Player challenger = Bukkit.getPlayer(ch.sender);
             if (challenger != null) {
                 BetUtil.depositRaw(plugin, challenger, ch.bet);
-                challenger.sendMessage(ChatColor.GRAY+"[RSP] 상대 퇴장. 도전 취소 환불");
+                challenger.sendMessage(ChatColor.GRAY+plugin.tr("rsp.disconnect_refund"));
             }
         }
         // 게임 중이면 즉시 종료 처리
@@ -356,10 +356,10 @@ public class RspManager implements Listener {
     }
 
     private void sendHelp(Player p) {
-        p.sendMessage(ChatColor.GOLD+"[RSP] 사용법");
-        p.sendMessage(ChatColor.YELLOW+"/casino rsp <player|봇> <베팅>"+ChatColor.GRAY+" - 도전 전송");
-        p.sendMessage(ChatColor.YELLOW+"/casino rsp <보낸이> <베팅> accept|deny"+ChatColor.GRAY+" - 도전 수락/거절");
-        p.sendMessage(ChatColor.YELLOW+"/casino rsp choose <가위|바위|보>"+ChatColor.GRAY+" - 손 선택");
+        p.sendMessage(ChatColor.GOLD+plugin.tr("rsp.help_header"));
+        p.sendMessage(ChatColor.YELLOW+plugin.tr("rsp.usage_challenge"));
+        p.sendMessage(ChatColor.YELLOW+plugin.tr("rsp.usage_acceptdeny"));
+        p.sendMessage(ChatColor.YELLOW+plugin.tr("rsp.usage_choose"));
     }
 
     private Hand parseHand(String raw) {
@@ -370,7 +370,7 @@ public class RspManager implements Listener {
         return null;
     }
 
-    private String displayHand(Hand h) { return switch (h){ case ROCK->"바위"; case PAPER->"보"; case SCISSOR->"가위"; }; }
+    private String displayHand(Hand h) { return switch (h){ case ROCK->plugin.tr("rsp.hand_rock"); case PAPER->plugin.tr("rsp.hand_paper"); case SCISSOR->plugin.tr("rsp.hand_scissor"); }; }
     private long parseLong(String s, long def){ try { return Long.parseLong(s);} catch(Exception e){ return def; }}
     private String fmt(long v){ return String.format("%,d", v); }
 
@@ -387,20 +387,20 @@ public class RspManager implements Listener {
         Component header = Component.text("[RSP] ", NamedTextColor.GOLD)
                 .append(Component.text(challengerName+"의 도전! ", NamedTextColor.WHITE))
                 .append(Component.text("베팅 ₩"+fmt(bet), NamedTextColor.AQUA));
-        Component acceptBtn = button("[수락]", NamedTextColor.GREEN, "/casino rsp "+challengerName+" "+bet+" accept", "도전 수락");
-        Component denyBtn = button("[거절]", NamedTextColor.RED, "/casino rsp "+challengerName+" "+bet+" deny", "도전 거절");
+        Component acceptBtn = button(plugin.tr("rsp.accept_button"), NamedTextColor.GREEN, "/casino rsp "+challengerName+" "+bet+" accept", plugin.tr("rsp.accept_hover"));
+        Component denyBtn = button(plugin.tr("rsp.deny_button"), NamedTextColor.RED, "/casino rsp "+challengerName+" "+bet+" deny", plugin.tr("rsp.deny_hover"));
         target.sendMessage(header);
         target.sendMessage(acceptBtn.append(Component.space()).append(denyBtn));
     }
 
     private void sendChoosePrompt(Player p){
-        Component header = Component.text("[RSP] 선택: ", NamedTextColor.GOLD)
-                .append(Component.text("가위", NamedTextColor.AQUA).clickEvent(ClickEvent.runCommand("/casino rsp choose 가위")).hoverEvent(HoverEvent.showText(Component.text("가위를 선택", NamedTextColor.WHITE))))
-                .append(Component.space())
-                .append(Component.text("바위", NamedTextColor.YELLOW).clickEvent(ClickEvent.runCommand("/casino rsp choose 바위")).hoverEvent(HoverEvent.showText(Component.text("바위를 선택", NamedTextColor.WHITE))))
-                .append(Component.space())
-                .append(Component.text("보", NamedTextColor.GREEN).clickEvent(ClickEvent.runCommand("/casino rsp choose 보")).hoverEvent(HoverEvent.showText(Component.text("보를 선택", NamedTextColor.WHITE))));
-        p.sendMessage(header);
+        Component header = Component.text("[RSP] ", NamedTextColor.GOLD)
+                .append(Component.text(plugin.tr("rsp.choose_prompt").replace("&", "§"), NamedTextColor.WHITE));
+        // 개별 클릭 버튼 제공
+        Component rock = Component.text(plugin.tr("rsp.hand_rock"), NamedTextColor.AQUA).clickEvent(ClickEvent.runCommand("/casino rsp choose "+plugin.tr("rsp.hand_rock"))).hoverEvent(HoverEvent.showText(Component.text("바위를 선택", NamedTextColor.WHITE)));
+        Component paper = Component.text(plugin.tr("rsp.hand_paper"), NamedTextColor.YELLOW).clickEvent(ClickEvent.runCommand("/casino rsp choose "+plugin.tr("rsp.hand_paper"))).hoverEvent(HoverEvent.showText(Component.text("보를 선택", NamedTextColor.WHITE)));
+        Component scissor = Component.text(plugin.tr("rsp.hand_scissor"), NamedTextColor.GREEN).clickEvent(ClickEvent.runCommand("/casino rsp choose "+plugin.tr("rsp.hand_scissor"))).hoverEvent(HoverEvent.showText(Component.text("가위를 선택", NamedTextColor.WHITE)));
+        p.sendMessage(header.append(Component.space()).append(rock).append(Component.space()).append(paper).append(Component.space()).append(scissor));
     }
 
     private Component button(String label, NamedTextColor color, String command, String hover){

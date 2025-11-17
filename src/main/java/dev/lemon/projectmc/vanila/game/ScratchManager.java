@@ -171,8 +171,8 @@ public class ScratchManager implements Listener {
         }
         lore.add(ChatColor.DARK_GRAY + "");
         lore.add(ChatColor.GRAY + plugin.tr("scratch.info_symbols_title"));
-        lore.add(ChatColor.GREEN + "승리 심볼: " + joinMaterials(winSymbols));
-        lore.add(ChatColor.RED + "일반 심볼: " + joinMaterials(loseSymbols));
+        lore.add(ChatColor.GREEN + plugin.tr("scratch.win_symbols_label") + " " + joinMaterials(winSymbols));
+        lore.add(ChatColor.RED + plugin.tr("scratch.lose_symbols_label") + " " + joinMaterials(loseSymbols));
         ItemStack is = new ItemStack(Material.PAPER);
         ItemMeta im = is.getItemMeta();
         if (im!=null){
@@ -233,11 +233,11 @@ public class ScratchManager implements Listener {
     @EventHandler
     public void onClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player p)) return;
-        if (!e.getView().getTitle().startsWith(ChatColor.GOLD + "즉석 복권")) return;
-        e.setCancelled(true);
-        if (e.getClickedInventory() != e.getView().getTopInventory()) return;
         Session s = sessions.get(p.getUniqueId());
         if (s == null) return;
+        if (e.getView().getTopInventory() != s.inv) return;
+        e.setCancelled(true);
+        if (e.getClickedInventory() != e.getView().getTopInventory()) return;
         int raw = e.getRawSlot();
         if (raw == EXIT_SLOT) {
             sessions.remove(p.getUniqueId());
@@ -253,7 +253,7 @@ public class ScratchManager implements Listener {
         if (raw == RETRY_SLOT) {
             if (!s.done) return;
             if (!BetUtil.withdraw(plugin, p, ticketPrice)) {
-                p.sendMessage(plugin.tr("scratch.insufficient"));
+                p.sendMessage(plugin.tr("scratch.retry_fail_insufficient"));
                 return;
             }
             s.transitioning = true;
@@ -280,15 +280,18 @@ public class ScratchManager implements Listener {
 
     @EventHandler
     public void onDrag(InventoryDragEvent e) {
-        if (e.getView().getTitle().startsWith(ChatColor.GOLD + "즉석 복권")) e.setCancelled(true);
+        if (!(e.getWhoClicked() instanceof Player p)) return;
+        Session s = sessions.get(p.getUniqueId());
+        if (s == null) return;
+        if (e.getView().getTopInventory() == s.inv) e.setCancelled(true);
     }
 
     @EventHandler
     public void onClose(InventoryCloseEvent e) {
         if (!(e.getPlayer() instanceof Player p)) return;
-        if (!e.getView().getTitle().startsWith(ChatColor.GOLD + "즉석 복권")) return;
         Session s = sessions.get(p.getUniqueId());
-        if (s == null) return;
+        if s == null) return;
+        if (e.getView().getTopInventory() != s.inv) return;
         if (shuttingDown) { sessions.remove(p.getUniqueId()); return; }
         if (!s.done && !s.transitioning)
             Bukkit.getScheduler().runTask(plugin, () -> p.openInventory(s.inv));
@@ -351,7 +354,7 @@ public class ScratchManager implements Listener {
     }
 
     private ItemStack cover() {
-        return named(Material.GRAY_CONCRETE, ChatColor.DARK_GRAY + "긁어보기");
+        return named(Material.GRAY_CONCRETE, plugin.tr("scratch.cover_name"));
     }
 
     private ItemStack pane() {

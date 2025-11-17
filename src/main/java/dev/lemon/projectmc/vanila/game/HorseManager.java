@@ -240,13 +240,12 @@ public class HorseManager implements Listener {
     }
 
     @EventHandler public void onClick(InventoryClickEvent e){
-        if (!(e.getWhoClicked() instanceof Player p)) return; String title=e.getView().getTitle(); if (!title.startsWith(ChatColor.GOLD+"경마")) return; e.setCancelled(true);
-        Session s=sessions.get(p.getUniqueId()); if (s==null) return;
+        if (!(e.getWhoClicked() instanceof Player p)) return; Session s=sessions.get(p.getUniqueId()); if (s==null) return; if (e.getView().getTopInventory()!=s.inv) return; e.setCancelled(true);
         int slot=e.getRawSlot(); if (slot<0 || slot>=54) return;
         if (s.state==2){
             if (slot==RETRY_SLOT){
-                if (!BetUtil.withdraw(plugin,p,s.bet)){ p.sendMessage(ChatColor.RED+"[Horse] 잔액 부족 – 재시작 실패"); return; }
-                resetSession(s); p.sendMessage(ChatColor.YELLOW+"[Horse] 재시작! 말 선택 후 경주 진행"); return; }
+                if (!BetUtil.withdraw(plugin,p,s.bet)){ p.sendMessage(plugin.tr("horse.retry_fail_insufficient")); return; }
+                resetSession(s); p.sendMessage(plugin.tr("horse.restart_notice")); return; }
             if (slot==EXIT_SLOT){ p.closeInventory(); sessions.remove(p.getUniqueId()); return; }
             return;
         }
@@ -256,8 +255,8 @@ public class HorseManager implements Listener {
         int base=row*9; Horse h=horses.get(row); e.getView().getTopInventory().setItem(base, horseBaseItem(h,true));
         start(p,s);
     }
-    @EventHandler public void onDrag(InventoryDragEvent e){ String title=e.getView().getTitle(); if (title.startsWith(ChatColor.GOLD+"경마")) e.setCancelled(true);}
-    @EventHandler public void onClose(InventoryCloseEvent e){ if (!(e.getPlayer() instanceof Player p)) return; String title=e.getView().getTitle(); if (!title.startsWith(ChatColor.GOLD+"경마")) return; if (shuttingDown) { sessions.remove(p.getUniqueId()); return; } Session s=sessions.get(p.getUniqueId()); if (s!=null && s.state!=2) Bukkit.getScheduler().runTask(plugin,()->p.openInventory(s.inv)); }
+    @EventHandler public void onDrag(InventoryDragEvent e){ if (!(e.getWhoClicked() instanceof Player p)) return; Session s=sessions.get(p.getUniqueId()); if (s!=null && e.getView().getTopInventory()==s.inv) e.setCancelled(true);}
+    @EventHandler public void onClose(InventoryCloseEvent e){ if (!(e.getPlayer() instanceof Player p)) return; Session s=sessions.get(p.getUniqueId()); if (s==null) return; if (e.getView().getTopInventory()!=s.inv) return; if (shuttingDown) { sessions.remove(p.getUniqueId()); return; } if (s.state!=2) Bukkit.getScheduler().runTask(plugin,()->p.openInventory(s.inv)); }
 
     private void start(Player p, Session s) {
         if (this.mode == Mode.PREDETERMINED) {

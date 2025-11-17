@@ -33,7 +33,7 @@ dice:
   number_selected_suffix: "&a ✓"
   number_miss_suffix: "&c ✗"
 scratch:
-  gui_title: "&6즉석 복권 (6게임) - ₩{price}"
+  gui_title: "&6즉석 복권 - ₩{price}"
   hint: "&e3심볼 모두 동일해야 상금 획득"
   info_rule: "&e3개의 심볼이 모두 일치해야 해당 상금 획득"
   info_prizes_title: "&6상금 목록"
